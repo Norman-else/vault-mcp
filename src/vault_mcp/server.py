@@ -241,6 +241,36 @@ class VaultMCPServer:
                 }
             )
 
+    async def vault_logout(self) -> str:
+        """登出 Vault，清空所有登录状态和缓存."""
+        try:
+            # 清空 Vault client
+            if self.vault_client:
+                logger.info("Clearing Vault client...")
+                self.vault_client = None
+
+            # 清空 AWS profile 和 region 信息
+            logger.info(
+                f"Logged out from Vault (was using AWS profile: {self.aws_profile})"
+            )
+
+            return json.dumps(
+                {
+                    "success": True,
+                    "message": "Successfully logged out from Vault. All credentials cleared.",
+                    "previous_vault_addr": self.vault_addr,
+                    "previous_aws_profile": self.aws_profile,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error during logout: {e}")
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"Logout failed: {str(e)}",
+                }
+            )
+
     async def vault_kv_get(self, path: str, mount_point: str = "secret") -> str:
         """
         读取 KV secret.
@@ -408,6 +438,14 @@ async def main():
                 },
             ),
             Tool(
+                name="vault_logout",
+                description="登出 Vault，清空当前的登录状态和所有缓存的凭证。使用场景：切换环境前、结束工作时、或想重新登录时。",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
+            Tool(
                 name="vault_kv_get",
                 description="从 Vault KV 存储中读取 secret。适用于读取应用配置、API keys 等静态 secrets。",
                 inputSchema={
@@ -480,6 +518,8 @@ async def main():
         try:
             if name == "vault_login":
                 result = await vault_server.vault_login()
+            elif name == "vault_logout":
+                result = await vault_server.vault_logout()
             elif name == "vault_kv_get":
                 result = await vault_server.vault_kv_get(
                     path=arguments.get("path"),
