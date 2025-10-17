@@ -152,15 +152,34 @@ cursor .
 
 # 查看数据库角色
 "列出所有可用的数据库角色"
+
+# 登出（清空登录状态）
+"帮我登出 Vault"
+"清空当前的 Vault 登录状态"
 ```
+
+### 使用场景
+
+#### 📤 登出 Vault
+```
+你："帮我登出 Vault"
+AI：✓ 已清空所有登录状态和凭证缓存
+```
+
+**使用场景**：
+- 切换到不同的 AWS profile 前
+- 结束工作时
+- 想重新登录以刷新凭证时
+- 遇到认证问题需要重置时
 
 ## 可用的 MCP 工具
 
 1. **vault_login** - 使用 AWS IAM 认证登录到 Vault
-2. **vault_kv_get** - 读取 KV secret
-3. **vault_kv_list** - 列出 KV secrets
-4. **vault_read** - 读取动态 secrets（数据库凭证等）
-5. **vault_list** - 列出任意路径
+2. **vault_logout** - 登出并清空所有登录状态和凭证缓存
+3. **vault_kv_get** - 读取 KV secret
+4. **vault_kv_list** - 列出 KV secrets
+5. **vault_read** - 读取动态 secrets（数据库凭证等）
+6. **vault_list** - 列出任意路径
 
 ## 故障排查
 
