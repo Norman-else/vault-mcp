@@ -23,21 +23,51 @@ class VaultMCPServer:
 
     def __init__(self):
         self.vault_client: Optional[hvac.Client] = None
-        self.vault_addr = os.getenv("VAULT_ADDR", "")
-        self.vault_header_value = os.getenv("VAULT_HEADER_VALUE", "")
-        self.vault_role = os.getenv("VAULT_ROLE", "vault_admin")
-        self.aws_profile = os.getenv("AWS_PROFILE", "dev")
-        self.aws_region = os.getenv("AWS_REGION", "us-east-1")
-        self.k8s_context = os.getenv("K8S_CONTEXT", "")  # Kubernetes 上下文
+        self.current_env = None  # 当前登录的环境
 
-        # 尝试从环境变量获取已存在的 token
-        vault_token = os.getenv("VAULT_TOKEN")
-        if vault_token:
-            self._init_vault_client(vault_token)
+        # 多环境配置
+        self.environments = {
+            "dev": {
+                "vault_addr": os.getenv(
+                    "VAULT_ADDR_DEV", "https://vault.internal.dev.aws.example.com"
+                ),
+                "vault_header_value": os.getenv(
+                    "VAULT_HEADER_DEV", "vault.dev.example.com"
+                ),
+                "vault_role": os.getenv("VAULT_ROLE_DEV", "vault_admin"),
+                "aws_profile": os.getenv("AWS_PROFILE_DEV", "dev"),
+                "aws_region": os.getenv("AWS_REGION_DEV", "us-west-2"),
+                "k8s_context": os.getenv("K8S_CONTEXT_DEV", "dev-cluster"),
+            },
+            "sat": {
+                "vault_addr": os.getenv(
+                    "VAULT_ADDR_SAT", "https://vault.internal.sat.aws.example.com"
+                ),
+                "vault_header_value": os.getenv(
+                    "VAULT_HEADER_SAT", "vault.sat.example.com"
+                ),
+                "vault_role": os.getenv("VAULT_ROLE_SAT", "vault_admin"),
+                "aws_profile": os.getenv("AWS_PROFILE_SAT", "sat"),
+                "aws_region": os.getenv("AWS_REGION_SAT", "us-west-2"),
+                "k8s_context": os.getenv("K8S_CONTEXT_SAT", "sat-cluster"),
+            },
+            "prod": {
+                "vault_addr": os.getenv(
+                    "VAULT_ADDR_PROD", "https://vault.internal.prod.aws.example.com"
+                ),
+                "vault_header_value": os.getenv(
+                    "VAULT_HEADER_PROD", "vault.prod.example.com"
+                ),
+                "vault_role": os.getenv("VAULT_ROLE_PROD", "vault_admin"),
+                "aws_profile": os.getenv("AWS_PROFILE_PROD", "prod"),
+                "aws_region": os.getenv("AWS_REGION_PROD", "us-west-2"),
+                "k8s_context": os.getenv("K8S_CONTEXT_PROD", "prod-cluster"),
+            },
+        }
 
-    def _init_vault_client(self, token: str):
+    def _init_vault_client(self, token: str, vault_addr: str):
         """初始化 Vault 客户端."""
-        self.vault_client = hvac.Client(url=self.vault_addr, token=token)
+        self.vault_client = hvac.Client(url=vault_addr, token=token)
 
         # 验证 token 是否有效
         try:
@@ -48,25 +78,23 @@ class VaultMCPServer:
             self.vault_client = None
 
     def _ensure_authenticated(self) -> bool:
-        """确保已认证，如果没有则尝试登录."""
+        """确保已认证."""
         if self.vault_client and self.vault_client.is_authenticated():
             return True
+        return False
 
-        # 尝试使用 AWS 认证
-        try:
-            return self._aws_login()
-        except Exception as e:
-            logger.error(f"Authentication failed: {e}")
-            return False
+    def _switch_k8s_context(self, k8s_context: str) -> bool:
+        """切换到指定的 Kubernetes 上下文.
 
-    def _switch_k8s_context(self) -> bool:
-        """切换到指定的 Kubernetes 上下文."""
-        if not self.k8s_context:
-            logger.info("No K8S_CONTEXT specified, skipping kubectl context switch")
+        Args:
+            k8s_context: Kubernetes 上下文名称
+        """
+        if not k8s_context:
+            logger.info("No k8s_context specified, skipping kubectl context switch")
             return True
 
         try:
-            logger.info(f"Switching kubectl context to: {self.k8s_context}")
+            logger.info(f"Switching kubectl context to: {k8s_context}")
 
             # 检查 kubectl 是否安装
             check_cmd = ["kubectl", "config", "current-context"]
@@ -78,18 +106,18 @@ class VaultMCPServer:
             logger.info(f"Current kubectl context: {current_context}")
 
             # 如果已经是目标上下文，跳过切换
-            if current_context == self.k8s_context:
-                logger.info(f"✓ Already in context: {self.k8s_context}")
+            if current_context == k8s_context:
+                logger.info(f"✓ Already in context: {k8s_context}")
                 return True
 
             # 切换上下文
-            switch_cmd = ["kubectl", "config", "use-context", self.k8s_context]
+            switch_cmd = ["kubectl", "config", "use-context", k8s_context]
             result = subprocess.run(
                 switch_cmd, capture_output=True, text=True, timeout=10
             )
 
             if result.returncode == 0:
-                logger.info(f"✓ Switched to kubectl context: {self.k8s_context}")
+                logger.info(f"✓ Switched to kubectl context: {k8s_context}")
                 return True
             else:
                 logger.error(f"Failed to switch kubectl context: {result.stderr}")
@@ -102,19 +130,22 @@ class VaultMCPServer:
             logger.error(f"Error switching kubectl context: {e}")
             return False
 
-    def _get_aws_credentials_via_awsvault(self):
-        """通过 aws-vault 主动获取 AWS 凭证."""
+    def _get_aws_credentials_via_awsvault(self, aws_profile: str):
+        """通过 aws-vault 主动获取 AWS 凭证.
+
+        Args:
+            aws_profile: AWS profile 名称
+        """
         try:
             logger.info(
-                f"Trying to get credentials via aws-vault for profile: {self.aws_profile}"
+                f"Trying to get credentials via aws-vault for profile: {aws_profile}"
             )
             logger.info(
                 "⏳ If MFA prompt appears, please enter your code (30 seconds timeout)..."
             )
 
             # 执行 aws-vault export 获取凭证（可能需要 MFA 输入）
-            # 注意：不使用 capture_output=True，这样 MFA 提示可以正常显示
-            cmd = ["aws-vault", "export", self.aws_profile, "--format=json"]
+            cmd = ["aws-vault", "export", aws_profile, "--format=json"]
             result = subprocess.run(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -145,22 +176,31 @@ class VaultMCPServer:
             logger.warning(f"Failed to get credentials via aws-vault: {e}")
             return None
 
-    def _aws_login(self) -> bool:
-        """使用 AWS IAM 认证登录 Vault."""
+    def _aws_login(self, env_config: dict) -> bool:
+        """使用 AWS IAM 认证登录 Vault.
+
+        Args:
+            env_config: 环境配置字典
+        """
         try:
-            logger.info(f"Attempting to login to Vault at {self.vault_addr}")
-            logger.info(
-                f"Using AWS profile: {self.aws_profile}, region: {self.aws_region}"
-            )
+            vault_addr = env_config["vault_addr"]
+            aws_profile = env_config["aws_profile"]
+            aws_region = env_config["aws_region"]
+            vault_role = env_config["vault_role"]
+            vault_header_value = env_config["vault_header_value"]
+            k8s_context = env_config["k8s_context"]
+
+            logger.info(f"Attempting to login to Vault at {vault_addr}")
+            logger.info(f"Using AWS profile: {aws_profile}, region: {aws_region}")
 
             # 步骤 1: 切换 kubectl 上下文（如果需要）
-            if not self._switch_k8s_context():
+            if not self._switch_k8s_context(k8s_context):
                 logger.warning(
                     "Failed to switch kubectl context, but continuing anyway..."
                 )
 
             # 创建临时的 Vault 客户端用于登录
-            temp_client = hvac.Client(url=self.vault_addr)
+            temp_client = hvac.Client(url=vault_addr)
 
             # 获取 AWS 凭证 - 优先使用 aws-vault
             access_key = None
@@ -169,7 +209,7 @@ class VaultMCPServer:
 
             # 方式 1: 尝试通过 aws-vault 获取凭证
             logger.info("Trying to get credentials from aws-vault...")
-            aws_env = self._get_aws_credentials_via_awsvault()
+            aws_env = self._get_aws_credentials_via_awsvault(aws_profile)
 
             if aws_env and aws_env.get("AWS_ACCESS_KEY_ID"):
                 access_key = aws_env["AWS_ACCESS_KEY_ID"]
@@ -189,55 +229,71 @@ class VaultMCPServer:
                     logger.error("✗ No AWS credentials found")
                     logger.error("")
                     logger.error("Please run in a terminal:")
-                    logger.error("  aws-vault exec dev --duration=8h")
+                    logger.error(f"  aws-vault exec {aws_profile} --duration=8h")
                     logger.error("")
                     logger.error(
                         "Then keep that terminal session open and retry in Cursor"
                     )
                     raise ValueError("No AWS credentials found")
 
-            logger.info(f"Using Vault role: {self.vault_role}")
+            logger.info(f"Using Vault role: {vault_role}")
 
             # 使用 AWS IAM 认证
             response = temp_client.auth.aws.iam_login(
                 access_key=access_key,
                 secret_key=secret_key,
                 session_token=session_token,
-                role=self.vault_role,
-                header_value=self.vault_header_value,
+                role=vault_role,
+                header_value=vault_header_value,
             )
 
             token = response["auth"]["client_token"]
-            self._init_vault_client(token)
+            self._init_vault_client(token, vault_addr)
 
             logger.info("Successfully authenticated with Vault using AWS IAM")
             return True
 
         except Exception as e:
             logger.error(f"AWS login failed: {e}")
-            logger.error(f"Vault address: {self.vault_addr}")
-            logger.error(f"AWS profile: {self.aws_profile}")
-            logger.error(f"Vault role: {self.vault_role}")
+            logger.error(f"Vault address: {vault_addr}")
+            logger.error(f"AWS profile: {aws_profile}")
+            logger.error(f"Vault role: {vault_role}")
             import traceback
 
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
-    async def vault_login(self) -> str:
-        """登录到 Vault."""
-        if self._aws_login():
+    async def vault_login(self, environment: str = "dev") -> str:
+        """登录到指定环境的 Vault.
+
+        Args:
+            environment: 环境名称 (dev/sat/prod)
+        """
+        if environment not in self.environments:
+            return json.dumps(
+                {
+                    "success": False,
+                    "message": f"Unknown environment: {environment}. Available: {list(self.environments.keys())}",
+                }
+            )
+
+        env_config = self.environments[environment]
+
+        if self._aws_login(env_config):
+            self.current_env = environment
             return json.dumps(
                 {
                     "success": True,
-                    "message": "Successfully authenticated with Vault",
-                    "vault_addr": self.vault_addr,
+                    "message": f"Successfully authenticated with {environment.upper()} Vault",
+                    "environment": environment,
+                    "vault_addr": env_config["vault_addr"],
                 }
             )
         else:
             return json.dumps(
                 {
                     "success": False,
-                    "message": "Failed to authenticate with Vault. Please check your AWS credentials and Vault configuration.",
+                    "message": f"Failed to authenticate with {environment.upper()} Vault. Please check your AWS credentials and Vault configuration.",
                 }
             )
 
@@ -254,31 +310,41 @@ class VaultMCPServer:
                 self.vault_client = None
 
             messages = []
+
+            # 获取当前使用的 AWS profile
+            current_profile = "unknown"
+            if self.current_env and self.current_env in self.environments:
+                current_profile = self.environments[self.current_env]["aws_profile"]
+
             messages.append(
-                f"✓ Logged out from Vault (was using AWS profile: {self.aws_profile})"
+                f"✓ Logged out from Vault (was using environment: {self.current_env}, AWS profile: {current_profile})"
             )
 
+            # 清空当前环境
+            previous_env = self.current_env
+            self.current_env = None
+
             # 清空 aws-vault 的凭证缓存
-            if clear_aws_cache:
+            if clear_aws_cache and previous_env:
                 logger.info(
-                    f"Clearing aws-vault credentials cache for profile: {self.aws_profile}"
+                    f"Clearing aws-vault credentials cache for profile: {current_profile}"
                 )
                 try:
                     import subprocess
 
                     # 使用 aws-vault clear 命令清空临时凭证
                     result = subprocess.run(
-                        ["aws-vault", "clear", self.aws_profile],
+                        ["aws-vault", "clear", current_profile],
                         capture_output=True,
                         text=True,
                         timeout=5,
                     )
                     if result.returncode == 0:
                         logger.info(
-                            f"✓ Cleared aws-vault temporary credentials for {self.aws_profile}"
+                            f"✓ Cleared aws-vault temporary credentials for {current_profile}"
                         )
                         messages.append(
-                            f"✓ Cleared AWS temporary credentials for profile: {self.aws_profile}"
+                            f"✓ Cleared AWS temporary credentials for profile: {current_profile}"
                         )
                         messages.append("   Next login will require MFA")
                     else:
@@ -300,8 +366,8 @@ class VaultMCPServer:
                 {
                     "success": True,
                     "message": "\n".join(messages),
-                    "previous_vault_addr": self.vault_addr,
-                    "previous_aws_profile": self.aws_profile,
+                    "previous_environment": previous_env,
+                    "previous_aws_profile": current_profile,
                     "aws_cache_cleared": clear_aws_cache,
                 }
             )
@@ -474,10 +540,17 @@ async def main():
         return [
             Tool(
                 name="vault_login",
-                description="使用 AWS IAM 认证登录到 Vault。如果你还没有登录或 token 已过期，请先调用此方法。",
+                description="使用 AWS IAM 认证登录到指定环境的 Vault。请在参数中指定要登录的环境（dev/sat/prod）。",
                 inputSchema={
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "environment": {
+                            "type": "string",
+                            "enum": ["dev", "sat", "prod"],
+                            "description": "要登录的环境：dev（开发）、sat（测试）、prod（生产）",
+                            "default": "dev",
+                        }
+                    },
                 },
             ),
             Tool(
@@ -566,7 +639,8 @@ async def main():
     async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         try:
             if name == "vault_login":
-                result = await vault_server.vault_login()
+                environment = arguments.get("environment", "dev")
+                result = await vault_server.vault_login(environment=environment)
             elif name == "vault_logout":
                 clear_aws_cache = arguments.get("clear_aws_cache", False)
                 result = await vault_server.vault_logout(
