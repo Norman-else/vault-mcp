@@ -5,23 +5,23 @@
       "args": ["-m", "vault_mcp.server"],
       "env": {
         "PYTHONPATH": "/Users/normanzuo/PersonalRepos/vault-mcp/src",
-        
-        "VAULT_ADDR_DEV": "https://vault.internal.dev.aws.mercaso.com",
-        "VAULT_HEADER_DEV": "vault.dev.mercaso.com",
+
+        "VAULT_ADDR_DEV": "https://vault.internal.dev.aws.example.store",
+        "VAULT_HEADER_DEV": "vault.dev.example.store",
         "VAULT_ROLE_DEV": "vault_admin",
         "AWS_PROFILE_DEV": "dev",
         "AWS_REGION_DEV": "us-west-2",
         "K8S_CONTEXT_DEV": "dev",
-        
-        "VAULT_ADDR_SAT": "https://vault.internal.sat.aws.mercaso.com",
-        "VAULT_HEADER_SAT": "vault.sat.mercaso.com",
+
+        "VAULT_ADDR_SAT": "https://vault.internal.sat.aws.example.store",
+        "VAULT_HEADER_SAT": "vault.sat.example.store",
         "VAULT_ROLE_SAT": "vault_admin",
         "AWS_PROFILE_SAT": "sat",
         "AWS_REGION_SAT": "us-west-2",
         "K8S_CONTEXT_SAT": "sat",
-        
-        "VAULT_ADDR_PROD": "https://vault.internal.prod.aws.mercaso.com",
-        "VAULT_HEADER_PROD": "vault.prod.mercaso.com",
+
+        "VAULT_ADDR_PROD": "https://vault.internal.prod.aws.example.store",
+        "VAULT_HEADER_PROD": "vault.prod.example.store",
         "VAULT_ROLE_PROD": "vault_admin",
         "AWS_PROFILE_PROD": "prod",
         "AWS_REGION_PROD": "us-west-2",
