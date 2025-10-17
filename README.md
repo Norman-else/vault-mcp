@@ -1,0 +1,271 @@
+# Vault MCP Server
+
+通过 AI 直接访问 AWS 环境中的 HashiCorp Vault。
+
+## 功能
+
+- 🔐 通过 AWS IAM 认证访问 Vault
+- 📦 读取 KV secrets（应用配置、API keys 等）
+- 🔄 查询动态 secrets（数据库凭证、AWS 凭证等）
+- 📋 列出和浏览 secrets 路径
+- 🤖 AI 驱动的自然语言查询
+
+## 快速开始
+
+### 1. 安装
+
+```bash
+cd /Users/normanzuo/PersonalRepos/vault-mcp
+pip install -e .
+```
+
+### 2. 配置
+
+在 Cursor 设置中配置 MCP 服务器（设置 -> MCP Servers -> Edit in settings.json）：
+
+#### macOS/Linux 配置：
+
+```json
+{
+  "mcpServers": {
+    "vault": {
+      "command": "/opt/homebrew/Caskroom/miniconda/base/bin/python",
+      "args": ["-m", "vault_mcp.server"],
+      "env": {
+        "VAULT_ADDR": "https://vault.internal.dev.aws.mercaso.store",
+        "VAULT_HEADER_VALUE": "vault.dev.mercaso.store",
+        "VAULT_ROLE": "vault_admin",
+        "AWS_PROFILE": "dev",
+        "AWS_REGION": "us-west-2",
+        "K8S_CONTEXT": "dev-cluster",
+        "PYTHONPATH": "/Users/your-username/vault-mcp/src"
+      }
+    }
+  }
+}
+```
+
+#### Windows 配置：
+
+```json
+{
+  "mcpServers": {
+    "vault": {
+      "command": "python",
+      "args": ["-m", "vault_mcp.server"],
+      "env": {
+        "VAULT_ADDR": "https://vault.internal.dev.aws.mercaso.store",
+        "VAULT_HEADER_VALUE": "vault.dev.mercaso.store",
+        "VAULT_ROLE": "vault_admin",
+        "AWS_PROFILE": "dev",
+        "AWS_REGION": "us-west-2",
+        "K8S_CONTEXT": "dev-cluster",
+        "PYTHONPATH": "C:\\Users\\YourUsername\\vault-mcp\\src"
+      }
+    }
+  }
+}
+```
+
+**Windows 注意事项**：
+- 使用 `python` 命令（确保 Python 在 PATH 中）
+- 或使用完整路径：`C:\\Python312\\python.exe`
+- PYTHONPATH 使用反斜杠并需要转义：`C:\\Users\\...`
+- 或使用正斜杠：`C:/Users/.../vault-mcp/src`
+
+**重要配置项**：
+- `K8S_CONTEXT`: Kubernetes 上下文名称（如果 Vault 部署在 k8s 中）
+  - 如果不需要切换上下文，可以留空或删除该配置项
+  - 查看可用上下文：`kubectl config get-contexts`
+  - 登录前会自动切换到指定的 k8s 上下文
+
+### 3. 启动 Cursor
+
+**直接启动** Cursor（从 Dock/Finder/命令行都可以）：
+
+```bash
+cursor .
+```
+
+### 4. 在 AI 对话中登录
+
+```
+帮我登录到 Vault
+```
+
+当 MFA 弹窗出现时，**输入你的 MFA 代码**（有 30 秒时间）。
+
+✅ MCP 服务器会自动调用 `aws-vault export` 获取凭证！
+
+## 工作原理
+
+```
+┌──────────────────────────┐
+│ 在 Cursor 中让 AI 登录    │
+└──────┬───────────────────┘
+       │
+       ↓
+┌──────────────────────────┐
+│ 自动切换 kubectl context │
+│ (如果配置了 K8S_CONTEXT) │
+└──────┬───────────────────┘
+       │
+       ↓
+┌──────────────────────────┐
+│ MCP 服务器自动调用        │
+│ aws-vault export dev     │
+└──────┬───────────────────┘
+       │
+       ↓
+┌──────────────────────────┐
+│ 弹出 MFA 输入框           │
+│ (你有 30 秒输入)          │
+└──────┬───────────────────┘
+       │
+       ↓
+┌──────────────────────────┐
+│ 获取临时 AWS 凭证         │
+└──────┬───────────────────┘
+       │
+       ↓
+┌──────────────────────────┐
+│ 使用凭证登录 Vault       │
+└──────────────────────────┘
+```
+
+## 使用示例
+
+在 Cursor 的 AI 对话中：
+
+```
+# 登录
+"帮我登录到 Vault"
+
+# 读取 KV secret
+"查看 secret/myapp/config 的内容"
+
+# 获取数据库临时凭证
+"获取数据库 readonly 角色的临时凭证"
+
+# 列出 secrets
+"列出 secret/myapp/ 下的所有 secrets"
+
+# 查看数据库角色
+"列出所有可用的数据库角色"
+```
+
+## 可用的 MCP 工具
+
+1. **vault_login** - 使用 AWS IAM 认证登录到 Vault
+2. **vault_kv_get** - 读取 KV secret
+3. **vault_kv_list** - 列出 KV secrets
+4. **vault_read** - 读取动态 secrets（数据库凭证等）
+5. **vault_list** - 列出任意路径
+
+## 故障排查
+
+### ❌ "aws-vault command timed out"
+
+**原因**：没有在 30 秒内输入 MFA 代码
+
+**解决方案**：
+
+1. 重新让 AI 登录
+2. 当 MFA 弹窗出现时，**快速输入代码**（有 30 秒时间）
+
+### ❌ 认证失败："Failed to authenticate with Vault"
+
+**可能原因**：
+
+1. **aws-vault 未配置**
+2. **kubectl 上下文错误**（如果 Vault 在 k8s 中）
+3. **网络问题**
+
+**检查步骤**：
+
+```bash
+# 1. 检查 aws-vault
+which aws-vault
+aws-vault list
+aws-vault export dev --format=json
+
+# 2. 检查 kubectl（如果 Vault 在 k8s）
+kubectl config get-contexts
+kubectl config current-context
+kubectl config use-context dev-cluster
+
+# 3. 测试 Vault 连接
+curl -k https://vault.internal.dev.aws.mercaso.store/v1/sys/health
+```
+
+### 📝 查看详细日志
+
+在 Cursor 中：
+1. 打开"输出"面板（View -> Output）
+2. 选择 "MCP" 频道
+3. 查看详细的认证过程和错误信息
+
+日志会显示：
+- 是否从环境变量找到 AWS 凭证
+- 是否尝试通过 aws-vault 获取凭证
+- Vault 认证是否成功
+- 具体的错误信息
+
+## 项目结构
+
+```
+vault-mcp/
+├── src/vault_mcp/
+│   ├── __init__.py
+│   └── server.py          # MCP 服务器（核心代码）
+├── pyproject.toml         # 项目配置和依赖
+├── cursor-config.json     # Cursor MCP 配置
+└── README.md              # 本文件
+```
+
+## 安全说明
+
+### 🔒 只读保证
+
+**本 MCP 服务器经过安全审计，确保 100% 只读操作。**
+
+- ✅ **零写操作**: 代码中完全没有实现任何写入、修改、删除方法
+- ✅ **只读 API**: 只使用 hvac 的读取和列表方法
+- ✅ **认证保护**: 所有操作都需要有效的 Vault token
+- ✅ **错误隔离**: 异常处理不泄露敏感信息
+
+### 实现的操作
+
+| 操作 | 类型 | 安全性 |
+|------|------|--------|
+| `vault_login` | 认证 | ✅ 只获取 token |
+| `vault_kv_get` | 读取 | ✅ 只读 |
+| `vault_kv_list` | 列表 | ✅ 只列出路径 |
+| `vault_read` | 读取 | ✅ 只读 |
+| `vault_list` | 列表 | ✅ 只列出路径 |
+
+### 未实现的操作（永久禁止）
+
+❌ 写入 / 创建 / 更新 / 删除 / 修改 / 销毁
+
+代码经过安全审计，确保 100% 只读操作，无任何写入方法。
+
+### 最佳实践
+
+1. **使用只读 Vault 策略**：为此服务配置的角色只授予读取权限
+2. **临时凭证**：使用临时 AWS 凭证和 Vault token
+3. **审计日志**：所有操作记录在 Vault 审计日志中
+4. **最小权限**：只访问必要的 secrets
+
+## 依赖
+
+- Python 3.10+
+- mcp >= 1.0.0
+- hvac >= 2.0.0
+- boto3 >= 1.34.0
+- python-dotenv >= 1.0.0
+- aws-vault（系统命令）
+
+## License
+
+MIT
