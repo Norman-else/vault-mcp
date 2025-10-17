@@ -32,8 +32,8 @@ pip install -e .
       "command": "/opt/homebrew/Caskroom/miniconda/base/bin/python",
       "args": ["-m", "vault_mcp.server"],
       "env": {
-        "VAULT_ADDR": "https://vault.internal.dev.aws.mercaso.store",
-        "VAULT_HEADER_VALUE": "vault.dev.mercaso.store",
+        "VAULT_ADDR": "https://vault.internal.dev.aws.example.com",
+        "VAULT_HEADER_VALUE": "vault.dev.example.com",
         "VAULT_ROLE": "vault_admin",
         "AWS_PROFILE": "dev",
         "AWS_REGION": "us-west-2",
@@ -54,8 +54,8 @@ pip install -e .
       "command": "python",
       "args": ["-m", "vault_mcp.server"],
       "env": {
-        "VAULT_ADDR": "https://vault.internal.dev.aws.mercaso.store",
-        "VAULT_HEADER_VALUE": "vault.dev.mercaso.store",
+        "VAULT_ADDR": "https://vault.internal.dev.aws.example.com",
+        "VAULT_HEADER_VALUE": "vault.dev.example.com",
         "VAULT_ROLE": "vault_admin",
         "AWS_PROFILE": "dev",
         "AWS_REGION": "us-west-2",
@@ -195,7 +195,7 @@ kubectl config current-context
 kubectl config use-context dev-cluster
 
 # 3. 测试 Vault 连接
-curl -k https://vault.internal.dev.aws.mercaso.store/v1/sys/health
+curl -k https://vault.internal.dev.aws.example.com/v1/sys/health
 ```
 
 ### 📝 查看详细日志
