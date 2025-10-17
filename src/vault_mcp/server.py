@@ -241,25 +241,67 @@ class VaultMCPServer:
                 }
             )
 
-    async def vault_logout(self) -> str:
-        """登出 Vault，清空所有登录状态和缓存."""
+    async def vault_logout(self, clear_aws_cache: bool = False) -> str:
+        """登出 Vault，清空所有登录状态和缓存.
+
+        Args:
+            clear_aws_cache: 是否同时清空 aws-vault 的凭证缓存
+        """
         try:
             # 清空 Vault client
             if self.vault_client:
                 logger.info("Clearing Vault client...")
                 self.vault_client = None
 
-            # 清空 AWS profile 和 region 信息
-            logger.info(
-                f"Logged out from Vault (was using AWS profile: {self.aws_profile})"
+            messages = []
+            messages.append(
+                f"✓ Logged out from Vault (was using AWS profile: {self.aws_profile})"
             )
+
+            # 清空 aws-vault 的凭证缓存
+            if clear_aws_cache:
+                logger.info(
+                    f"Clearing aws-vault credentials cache for profile: {self.aws_profile}"
+                )
+                try:
+                    import subprocess
+
+                    # 使用 aws-vault 的 --sessions-only 选项只清空临时 session
+                    result = subprocess.run(
+                        ["aws-vault", "remove", self.aws_profile, "--sessions-only"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    if result.returncode == 0:
+                        logger.info(
+                            f"✓ Cleared aws-vault session cache for {self.aws_profile}"
+                        )
+                        messages.append(
+                            f"✓ Cleared AWS credentials cache for profile: {self.aws_profile}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to clear aws-vault cache: {result.stderr}"
+                        )
+                        messages.append(
+                            f"⚠️  Could not clear AWS cache: {result.stderr.strip()}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Error clearing aws-vault cache: {e}")
+                    messages.append(f"⚠️  Could not clear AWS cache: {str(e)}")
+            else:
+                messages.append(
+                    "ℹ️  AWS credentials cache was not cleared (use clear_aws_cache=true to clear)"
+                )
 
             return json.dumps(
                 {
                     "success": True,
-                    "message": "Successfully logged out from Vault. All credentials cleared.",
+                    "message": "\n".join(messages),
                     "previous_vault_addr": self.vault_addr,
                     "previous_aws_profile": self.aws_profile,
+                    "aws_cache_cleared": clear_aws_cache,
                 }
             )
         except Exception as e:
@@ -439,10 +481,16 @@ async def main():
             ),
             Tool(
                 name="vault_logout",
-                description="登出 Vault，清空当前的登录状态和所有缓存的凭证。使用场景：切换环境前、结束工作时、或想重新登录时。",
+                description="登出 Vault，清空当前的登录状态。可选择是否同时清空 aws-vault 的凭证缓存（清空后下次登录需重新输入 MFA）。",
                 inputSchema={
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "clear_aws_cache": {
+                            "type": "boolean",
+                            "description": "是否同时清空 aws-vault 的凭证缓存。true=清空（下次登录需 MFA），false=保留（默认）",
+                            "default": False,
+                        }
+                    },
                 },
             ),
             Tool(
@@ -519,7 +567,10 @@ async def main():
             if name == "vault_login":
                 result = await vault_server.vault_login()
             elif name == "vault_logout":
-                result = await vault_server.vault_logout()
+                clear_aws_cache = arguments.get("clear_aws_cache", False)
+                result = await vault_server.vault_logout(
+                    clear_aws_cache=clear_aws_cache
+                )
             elif name == "vault_kv_get":
                 result = await vault_server.vault_kv_get(
                     path=arguments.get("path"),
