@@ -266,20 +266,21 @@ class VaultMCPServer:
                 try:
                     import subprocess
 
-                    # 使用 aws-vault 的 --sessions-only 选项只清空临时 session
+                    # 使用 aws-vault clear 命令清空临时凭证
                     result = subprocess.run(
-                        ["aws-vault", "remove", self.aws_profile, "--sessions-only"],
+                        ["aws-vault", "clear", self.aws_profile],
                         capture_output=True,
                         text=True,
                         timeout=5,
                     )
                     if result.returncode == 0:
                         logger.info(
-                            f"✓ Cleared aws-vault session cache for {self.aws_profile}"
+                            f"✓ Cleared aws-vault temporary credentials for {self.aws_profile}"
                         )
                         messages.append(
-                            f"✓ Cleared AWS credentials cache for profile: {self.aws_profile}"
+                            f"✓ Cleared AWS temporary credentials for profile: {self.aws_profile}"
                         )
+                        messages.append("   Next login will require MFA")
                     else:
                         logger.warning(
                             f"Failed to clear aws-vault cache: {result.stderr}"
