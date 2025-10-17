@@ -162,20 +162,43 @@ cursor .
 
 #### 📤 登出 Vault
 ```
+# 普通登出（保留 AWS 凭证缓存）
 你："帮我登出 Vault"
-AI：✓ 已清空所有登录状态和凭证缓存
+AI：✓ 已登出 Vault
+    ℹ️  AWS credentials cache was not cleared
+
+# 完全登出（同时清空 AWS 凭证缓存）
+你："彻底登出 Vault，包括 AWS 凭证"
+AI：✓ 已登出 Vault
+    ✓ 已清空 AWS 凭证缓存
+    下次登录需要重新输入 MFA
 ```
 
+**两种登出方式**：
+
+1. **普通登出**（默认）
+   - 只清空 Vault token
+   - 保留 AWS 凭证缓存
+   - 下次登录不需要 MFA（如果凭证未过期）
+
+2. **完全登出**（clear_aws_cache=true）
+   - 清空 Vault token
+   - 清空 aws-vault 的凭证缓存
+   - 下次登录需要重新输入 MFA
+
 **使用场景**：
-- 切换到不同的 AWS profile 前
-- 结束工作时
-- 想重新登录以刷新凭证时
-- 遇到认证问题需要重置时
+- 切换到不同的 AWS profile 前 → 使用**完全登出**
+- 结束工作时 → 使用**完全登出**
+- 想强制刷新 AWS 凭证时 → 使用**完全登出**
+- 只是切换 Vault 操作，不切换 AWS → 使用**普通登出**
+- 遇到认证问题需要重置时 → 使用**完全登出**
 
 ## 可用的 MCP 工具
 
 1. **vault_login** - 使用 AWS IAM 认证登录到 Vault
-2. **vault_logout** - 登出并清空所有登录状态和凭证缓存
+2. **vault_logout** - 登出 Vault，可选择是否清空 AWS 凭证缓存
+   - `clear_aws_cache=false`（默认）：只清空 Vault token
+   - `clear_aws_cache=true`：同时清空 aws-vault 凭证缓存
 3. **vault_kv_get** - 读取 KV secret
 4. **vault_kv_list** - 列出 KV secrets
 5. **vault_read** - 读取动态 secrets（数据库凭证等）
