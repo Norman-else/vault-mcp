@@ -6,12 +6,21 @@ import logging
 import subprocess
 from typing import Any, Optional
 from urllib.parse import urljoin
+from datetime import datetime
 
 import hvac
 import boto3
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 from mcp.server.stdio import stdio_server
+
+try:
+    from slack_sdk import WebClient
+    from slack_sdk.errors import SlackApiError
+
+    SLACK_AVAILABLE = True
+except ImportError:
+    SLACK_AVAILABLE = False
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +33,25 @@ class VaultMCPServer:
     def __init__(self):
         self.vault_client: Optional[hvac.Client] = None
         self.current_env = None  # 当前登录的环境
+
+        # Slack 配置
+        self.slack_enabled = os.getenv("SLACK_ENABLED", "false").lower() == "true"
+        self.slack_bot_token = os.getenv("SLACK_BOT_TOKEN", "")
+        self.slack_user_id = os.getenv("SLACK_USER_ID", "")
+        self.slack_client = None
+
+        if self.slack_enabled and SLACK_AVAILABLE and self.slack_bot_token:
+            try:
+                self.slack_client = WebClient(token=self.slack_bot_token)
+                logger.info("✓ Slack notifications enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Slack client: {e}")
+                self.slack_enabled = False
+        elif self.slack_enabled and not SLACK_AVAILABLE:
+            logger.warning(
+                "Slack enabled but slack-sdk not installed. Run: pip install slack-sdk"
+            )
+            self.slack_enabled = False
 
         # 多环境配置
         self.environments = {
@@ -175,6 +203,115 @@ class VaultMCPServer:
         except Exception as e:
             logger.warning(f"Failed to get credentials via aws-vault: {e}")
             return None
+
+    def _send_slack_notification(
+        self,
+        title: str,
+        data: dict,
+        query_type: str = "general",
+        service_name: str = "",
+    ):
+        """发送 Slack 通知.
+
+        Args:
+            title: 消息标题
+            data: 查询结果数据
+            query_type: 查询类型 (database/kv/general)
+            service_name: 服务名称
+        """
+        if not self.slack_enabled or not self.slack_client or not self.slack_user_id:
+            return
+
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 构建消息块
+            blocks = [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"🔐 {title}",
+                        "emoji": True,
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Environment:*\n{self.current_env.upper() if self.current_env else 'N/A'}",
+                        },
+                        {"type": "mrkdwn", "text": f"*Time:*\n{timestamp}"},
+                    ],
+                },
+                {"type": "divider"},
+            ]
+
+            # 根据查询类型格式化数据
+            if query_type == "database":
+                # 数据库凭证：只显示 username, password 和 service
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Service:* `{service_name}`",
+                        },
+                    }
+                )
+
+                credentials_text = ""
+                if "username" in data:
+                    credentials_text += f"*Username:* `{data['username']}`\n"
+                if "password" in data:
+                    credentials_text += f"*Password:* `{data['password']}`\n"
+
+                if credentials_text:
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": credentials_text.strip(),
+                            },
+                        }
+                    )
+            else:
+                # 其他查询：显示完整结果
+                data_text = (
+                    "```\n" + json.dumps(data, indent=2, ensure_ascii=False) + "\n```"
+                )
+                blocks.append(
+                    {"type": "section", "text": {"type": "mrkdwn", "text": data_text}}
+                )
+
+            # 添加警告提示
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "⚠️ _This message contains sensitive information. Please handle it securely and delete it after use._",
+                        }
+                    ],
+                }
+            )
+
+            # 发送消息
+            response = self.slack_client.chat_postMessage(
+                channel=self.slack_user_id, blocks=blocks, text=title  # fallback text
+            )
+
+            logger.info(
+                f"✓ Slack notification sent successfully to {self.slack_user_id}"
+            )
+
+        except SlackApiError as e:
+            logger.error(f"Slack API error: {e.response['error']}")
+        except Exception as e:
+            logger.error(f"Failed to send Slack notification: {e}")
 
     def _aws_login(self, env_config: dict) -> bool:
         """使用 AWS IAM 认证登录 Vault.
@@ -407,6 +544,14 @@ class VaultMCPServer:
                 )
                 data = response["data"]
 
+            # 发送 Slack 通知
+            self._send_slack_notification(
+                title=f"Vault KV Secret Retrieved",
+                data=data,
+                query_type="kv",
+                service_name=f"{mount_point}/{path}",
+            )
+
             return json.dumps(
                 {"success": True, "path": f"{mount_point}/{path}", "data": data},
                 indent=2,
@@ -478,6 +623,18 @@ class VaultMCPServer:
                         "path": path,
                     }
                 )
+
+            # 判断是否是数据库凭证
+            is_database_creds = "database/creds" in path or "database/roles" in path
+            query_type = "database" if is_database_creds else "general"
+
+            # 发送 Slack 通知
+            self._send_slack_notification(
+                title=f"Vault Secret Retrieved",
+                data=response["data"],
+                query_type=query_type,
+                service_name=path,
+            )
 
             return json.dumps(
                 {

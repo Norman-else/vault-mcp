@@ -133,6 +133,65 @@ cursor .
 └──────────────────────────┘
 ```
 
+## 🔔 Slack 集成（可选）
+
+自动将查询结果发送到 Slack，方便团队协作和记录。
+
+### 启用 Slack 通知
+
+1. **创建 Slack Bot**
+   - 访问 https://api.slack.com/apps
+   - 创建新应用，添加 Bot Token Scopes: `chat:write`
+   - 获取 Bot User OAuth Token (以 `xoxb-` 开头)
+
+2. **获取 User ID**
+   ```bash
+   # 方法 1: 在 Slack 点击你的头像 -> View profile -> More -> Copy member ID
+   # 方法 2: 使用 API
+   curl -H "Authorization: Bearer xoxb-your-token" \
+        "https://slack.com/api/users.list"
+   ```
+
+3. **配置环境变量**
+   ```json
+   {
+     "env": {
+       "SLACK_ENABLED": "true",
+       "SLACK_BOT_TOKEN": "xoxb-1234567890-1234567890-abcdefghijklmnop",
+       "SLACK_USER_ID": "U0123456789"
+     }
+   }
+   ```
+
+### 消息格式
+
+**数据库凭证**（只发送必要信息）：
+```
+🔐 Vault Secret Retrieved
+Environment: DEV | Time: 2024-10-18 10:30:00
+─────────────────────
+Service: database/creds/readonly
+Username: v-dev-readonly-xyz
+Password: ********
+```
+
+**其他 Secrets**（完整 JSON）：
+```
+🔐 Vault KV Secret Retrieved
+Environment: PROD | Time: 2024-10-18 10:30:00
+─────────────────────
+{
+  "api_key": "sk-...",
+  "endpoint": "https://..."
+}
+```
+
+### 安全提示
+⚠️ Slack 消息包含敏感信息，请确保：
+- Bot 只能访问私人频道
+- 使用后及时删除消息
+- 定期轮换 Bot Token
+
 ## 使用示例
 
 在 Cursor 的 AI 对话中：
