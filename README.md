@@ -192,6 +192,44 @@ Environment: PROD | Time: 2024-10-18 10:30:00
 - 使用后及时删除消息
 - 定期轮换 Bot Token
 
+## 🔒 高级安全配置
+
+### 禁止返回敏感数据给 AI
+
+为了最大化安全性，可以配置不将敏感数据返回给 AI，只通过 Slack 发送：
+
+```json
+{
+  "env": {
+    "RETURN_DATA_TO_AI": "false",  // 设置为 false 不返回数据给 AI
+    "SLACK_ENABLED": "true"        // 必须启用 Slack
+  }
+}
+```
+
+**启用后的效果：**
+
+```
+你: "获取数据库 readonly 的凭证"
+
+AI: ✓ Secret retrieved successfully and sent to Slack
+    - Path: database/creds/readonly
+    - Data returned to AI: No
+    - Slack notification sent: Yes
+    - Lease ID: database/creds/readonly/abc123
+    - Lease duration: 3600 seconds
+```
+
+**优点：**
+- ✅ 敏感数据不会出现在 AI 对话历史中
+- ✅ 减少数据泄露风险
+- ✅ 符合合规要求
+- ✅ 你仍然可以在 Slack 中查看完整数据
+
+**注意事项：**
+- ⚠️ 必须启用 Slack (`SLACK_ENABLED=true`)，否则你无法获取数据
+- ⚠️ 租约信息（lease_id、lease_duration）仍会返回，因为不包含敏感数据
+
 ## 使用示例
 
 在 Cursor 的 AI 对话中：
@@ -334,6 +372,16 @@ vault-mcp/
 - ✅ **只读 API**: 只使用 hvac 的读取和列表方法
 - ✅ **认证保护**: 所有操作都需要有效的 Vault token
 - ✅ **错误隔离**: 异常处理不泄露敏感信息
+
+### 🛡️ 数据隐私保护
+
+**可配置数据返回策略：**
+
+- ✅ **默认模式** (`RETURN_DATA_TO_AI=true`): 数据返回给 AI，方便交互
+- ✅ **隐私模式** (`RETURN_DATA_TO_AI=false`): 敏感数据只发送到 Slack，不返回给 AI
+  - 避免敏感数据出现在 AI 对话历史中
+  - 符合企业合规要求
+  - 必须配合 Slack 通知使用
 
 ### 实现的操作
 

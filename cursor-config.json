@@ -9,6 +9,7 @@
         "SLACK_ENABLED": "false",
         "SLACK_BOT_TOKEN": "xoxb-your-bot-token-here",
         "SLACK_USER_ID": "U123456789",
+        "RETURN_DATA_TO_AI": "true",
 
         "VAULT_ADDR_DEV": "https://vault.internal.dev.aws.example.store",
         "VAULT_HEADER_DEV": "vault.dev.example.store",

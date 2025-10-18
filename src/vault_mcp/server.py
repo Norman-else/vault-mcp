@@ -40,6 +40,11 @@ class VaultMCPServer:
         self.slack_user_id = os.getenv("SLACK_USER_ID", "")
         self.slack_client = None
 
+        # 安全配置：是否将查询结果返回给 AI（默认 true）
+        self.return_data_to_ai = (
+            os.getenv("RETURN_DATA_TO_AI", "true").lower() == "true"
+        )
+
         if self.slack_enabled and SLACK_AVAILABLE and self.slack_bot_token:
             try:
                 self.slack_client = WebClient(token=self.slack_bot_token)
@@ -552,6 +557,19 @@ class VaultMCPServer:
                 service_name=f"{mount_point}/{path}",
             )
 
+            # 根据配置决定是否返回数据给 AI
+            if not self.return_data_to_ai:
+                return json.dumps(
+                    {
+                        "success": True,
+                        "path": f"{mount_point}/{path}",
+                        "message": "✓ Secret retrieved successfully and sent to Slack",
+                        "data_returned_to_ai": False,
+                        "slack_notification_sent": self.slack_enabled,
+                    },
+                    indent=2,
+                )
+
             return json.dumps(
                 {"success": True, "path": f"{mount_point}/{path}", "data": data},
                 indent=2,
@@ -635,6 +653,22 @@ class VaultMCPServer:
                 query_type=query_type,
                 service_name=path,
             )
+
+            # 根据配置决定是否返回数据给 AI
+            if not self.return_data_to_ai:
+                result = {
+                    "success": True,
+                    "path": path,
+                    "message": "✓ Secret retrieved successfully and sent to Slack",
+                    "data_returned_to_ai": False,
+                    "slack_notification_sent": self.slack_enabled,
+                }
+                # 只返回租约信息，不返回敏感数据
+                if response.get("lease_id"):
+                    result["lease_id"] = response.get("lease_id")
+                    result["lease_duration"] = response.get("lease_duration")
+                    result["renewable"] = response.get("renewable")
+                return json.dumps(result, indent=2)
 
             return json.dumps(
                 {
