@@ -231,6 +231,46 @@ AI: ✓ Secret retrieved successfully and sent to Slack
 - ⚠️ 必须启用 Slack (`SLACK_ENABLED=true`)，否则你无法获取数据
 - ⚠️ 租约信息（lease_id、lease_duration）仍会返回，因为不包含敏感数据
 
+### 两种模式对比
+
+| 数据项 | `RETURN_DATA_TO_AI=true` | `RETURN_DATA_TO_AI=false` |
+|--------|--------------------------|---------------------------|
+| **查询状态** | ✅ 返回成功/失败 | ✅ 返回成功/失败 |
+| **Secret 路径** | ✅ 返回 | ✅ 返回 |
+| **敏感数据** | ✅ 完整返回给 AI | ❌ 不返回给 AI |
+| **Slack 通知** | ✅ 同时发送 | ✅ 同时发送 |
+| **AI 对话记录** | ⚠️ 包含完整 secret | ✅ 不含敏感数据 |
+| **租约信息** | ✅ 返回（如有） | ✅ 返回（如有） |
+
+**示例 - 查询数据库凭证：**
+
+```bash
+# RETURN_DATA_TO_AI=true 时，AI 看到：
+{
+  "success": true,
+  "path": "database/creds/readonly",
+  "data": {
+    "username": "v-dev-readonly-xyz",    // ⚠️ 暴露给 AI
+    "password": "A1b2C3d4E5"             // ⚠️ 暴露给 AI
+  },
+  "lease_id": "database/creds/readonly/abc123",
+  "lease_duration": 3600
+}
+
+# RETURN_DATA_TO_AI=false 时，AI 看到：
+{
+  "success": true,
+  "path": "database/creds/readonly",
+  "message": "✓ Secret retrieved successfully and sent to Slack",
+  "data_returned_to_ai": false,
+  "slack_notification_sent": true,
+  "lease_id": "database/creds/readonly/abc123",  // 租约信息保留
+  "lease_duration": 3600
+}
+
+# 在两种模式下，Slack 都会收到完整凭证
+```
+
 ## 使用示例
 
 在 Cursor 的 AI 对话中：
