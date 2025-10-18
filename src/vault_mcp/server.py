@@ -209,6 +209,35 @@ class VaultMCPServer:
             logger.warning(f"Failed to get credentials via aws-vault: {e}")
             return None
 
+    def _safe_format_data(self, data: dict, max_length: int = 2800) -> str:
+        """安全地格式化数据为字符串，确保不超过 Slack 限制.
+
+        Args:
+            data: 要格式化的数据
+            max_length: 最大字符数（Slack text 字段限制 3000，留 200 字符余量）
+
+        Returns:
+            格式化后的字符串
+        """
+        try:
+            # 尝试序列化为 JSON
+            formatted = json.dumps(data, indent=2, ensure_ascii=False, default=str)
+
+            # 如果超过长度限制，截断
+            if len(formatted) > max_length:
+                truncated = formatted[:max_length]
+                # 尝试在合理位置截断（找最后一个完整行）
+                last_newline = truncated.rfind("\n")
+                if last_newline > 0:
+                    truncated = truncated[:last_newline]
+                return truncated + f"\n...\n[Truncated - Total {len(formatted)} chars]"
+
+            return formatted
+        except Exception as e:
+            logger.warning(f"Failed to format data: {e}")
+            # 降级：返回简化的字符串表示
+            return str(data)[:max_length]
+
     def _send_slack_notification(
         self,
         title: str,
@@ -268,9 +297,20 @@ class VaultMCPServer:
 
                 credentials_text = ""
                 if "username" in data:
-                    credentials_text += f"*Username:* `{data['username']}`\n"
+                    # 确保值是字符串，处理复杂对象
+                    username = (
+                        str(data["username"])
+                        if not isinstance(data["username"], str)
+                        else data["username"]
+                    )
+                    credentials_text += f"*Username:* `{username[:500]}`\n"  # 限制长度
                 if "password" in data:
-                    credentials_text += f"*Password:* `{data['password']}`\n"
+                    password = (
+                        str(data["password"])
+                        if not isinstance(data["password"], str)
+                        else data["password"]
+                    )
+                    credentials_text += f"*Password:* `{password[:500]}`\n"  # 限制长度
 
                 if credentials_text:
                     blocks.append(
@@ -294,9 +334,9 @@ class VaultMCPServer:
                     }
                 )
 
-                data_text = (
-                    "```\n" + json.dumps(data, indent=2, ensure_ascii=False) + "\n```"
-                )
+                # 使用安全的格式化方法
+                formatted_data = self._safe_format_data(data)
+                data_text = f"```\n{formatted_data}\n```"
                 blocks.append(
                     {"type": "section", "text": {"type": "mrkdwn", "text": data_text}}
                 )
@@ -314,19 +354,90 @@ class VaultMCPServer:
                 }
             )
 
-            # 发送消息
-            response = self.slack_client.chat_postMessage(
-                channel=self.slack_user_id, blocks=blocks, text=title  # fallback text
-            )
-
-            logger.info(
-                f"✓ Slack notification sent successfully to {self.slack_user_id}"
-            )
+            # 发送消息 - 尝试使用 blocks
+            try:
+                response = self.slack_client.chat_postMessage(
+                    channel=self.slack_user_id,
+                    blocks=blocks,
+                    text=title,  # fallback text
+                )
+                logger.info(
+                    f"✓ Slack notification sent successfully to {self.slack_user_id}"
+                )
+            except SlackApiError as e:
+                # 如果 blocks 格式有问题，降级为纯文本消息
+                if "invalid_blocks" in str(e) or "invalid_text" in str(e):
+                    logger.warning(f"Blocks invalid, falling back to plain text: {e}")
+                    self._send_slack_fallback(title, data, query_type, service_name)
+                else:
+                    raise
 
         except SlackApiError as e:
             logger.error(f"Slack API error: {e.response['error']}")
         except Exception as e:
             logger.error(f"Failed to send Slack notification: {e}")
+
+    def _send_slack_fallback(
+        self,
+        title: str,
+        data: dict,
+        query_type: str = "general",
+        service_name: str = "",
+    ):
+        """降级：发送纯文本 Slack 消息（当 blocks 格式失败时）.
+
+        Args:
+            title: 消息标题
+            data: 查询结果数据
+            query_type: 查询类型
+            service_name: 服务名称
+        """
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            env = self.current_env.upper() if self.current_env else "N/A"
+
+            # 构建纯文本消息
+            if query_type == "database":
+                text_parts = [
+                    f"🔐 {title}",
+                    f"Environment: {env} | Time: {timestamp}",
+                    f"Service: {service_name}",
+                    "",
+                ]
+                if "username" in data:
+                    username = str(data["username"])[:500]
+                    text_parts.append(f"Username: {username}")
+                if "password" in data:
+                    password = str(data["password"])[:500]
+                    text_parts.append(f"Password: {password}")
+            else:
+                formatted_data = self._safe_format_data(data, max_length=2500)
+                text_parts = [
+                    f"🔐 {title}",
+                    f"Environment: {env} | Time: {timestamp}",
+                    f"Service: {service_name}",
+                    "",
+                    "Data:",
+                    formatted_data,
+                ]
+
+            text_parts.append("")
+            text_parts.append(
+                "⚠️ This message contains sensitive information. Please handle it securely."
+            )
+
+            message_text = "\n".join(text_parts)
+
+            # 发送纯文本消息
+            self.slack_client.chat_postMessage(
+                channel=self.slack_user_id, text=message_text
+            )
+
+            logger.info(
+                f"✓ Slack fallback notification sent successfully to {self.slack_user_id}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send Slack fallback notification: {e}")
 
     def _aws_login(self, env_config: dict) -> bool:
         """使用 AWS IAM 认证登录 Vault.
@@ -670,7 +781,11 @@ class VaultMCPServer:
             # 根据配置决定是否返回数据给 AI
             if not self.return_data_to_ai:
                 # 只返回 keys，不返回 values
-                keys_only = list(response["data"].keys()) if isinstance(response["data"], dict) else []
+                keys_only = (
+                    list(response["data"].keys())
+                    if isinstance(response["data"], dict)
+                    else []
+                )
                 result = {
                     "success": True,
                     "path": path,
