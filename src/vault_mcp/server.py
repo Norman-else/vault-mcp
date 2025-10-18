@@ -704,6 +704,93 @@ class VaultMCPServer:
                 {"success": False, "error": str(e), "path": f"{mount_point}/{path}"}
             )
 
+    async def vault_kv_get_key(
+        self, path: str, key: str, mount_point: str = "secret"
+    ) -> str:
+        """
+        读取 KV secret 中指定 key 的值.
+
+        Args:
+            path: Secret 路径（例如：myapp/config）
+            key: 要获取的字段名（例如：password）
+            mount_point: KV mount point（默认：secret）
+        """
+        if not self._ensure_authenticated():
+            return json.dumps(
+                {"success": False, "error": "Not authenticated. Please login first."}
+            )
+
+        try:
+            # 尝试 KV v2
+            try:
+                response = self.vault_client.secrets.kv.v2.read_secret_version(
+                    path=path, mount_point=mount_point
+                )
+                data = response["data"]["data"]
+            except:
+                # 回退到 KV v1
+                response = self.vault_client.secrets.kv.v1.read_secret(
+                    path=path, mount_point=mount_point
+                )
+                data = response["data"]
+
+            # 检查 key 是否存在
+            if key not in data:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Key '{key}' not found in secret",
+                        "path": f"{mount_point}/{path}",
+                        "available_keys": list(data.keys()),
+                    },
+                    indent=2,
+                )
+
+            # 获取指定 key 的值
+            value = data[key]
+
+            # 发送 Slack 通知（只发送这一个 key 的值）
+            self._send_slack_notification(
+                title=f"Vault Secret Key Retrieved",
+                data={key: value},  # 只发送请求的 key
+                query_type="kv",
+                service_name=f"{mount_point}/{path}#{key}",
+            )
+
+            # 根据配置决定是否返回数据给 AI
+            if not self.return_data_to_ai:
+                return json.dumps(
+                    {
+                        "success": True,
+                        "path": f"{mount_point}/{path}",
+                        "key": key,
+                        "message": f"✓ Secret key '{key}' retrieved successfully and sent to Slack",
+                        "data_returned_to_ai": False,
+                        "slack_notification_sent": self.slack_enabled,
+                    },
+                    indent=2,
+                )
+
+            return json.dumps(
+                {
+                    "success": True,
+                    "path": f"{mount_point}/{path}",
+                    "key": key,
+                    "value": value,
+                },
+                indent=2,
+            )
+
+        except Exception as e:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "path": f"{mount_point}/{path}",
+                    "key": key,
+                }
+            )
+
     async def vault_kv_list(self, path: str = "", mount_point: str = "secret") -> str:
         """
         列出 KV secrets 路径.
@@ -891,7 +978,7 @@ async def main():
             ),
             Tool(
                 name="vault_kv_get",
-                description="从 Vault KV 存储中读取 secret。适用于读取应用配置、API keys 等静态 secrets。",
+                description="从 Vault KV 存储中读取完整的 secret（所有字段）。适用于读取应用配置、API keys 等静态 secrets。",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -906,6 +993,29 @@ async def main():
                         },
                     },
                     "required": ["path"],
+                },
+            ),
+            Tool(
+                name="vault_kv_get_key",
+                description="从 Vault KV secret 中读取指定的单个字段。当只需要获取某个特定字段（如密码、API key）而不需要整个 secret 时使用。",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Secret 的路径，例如：myapp/config",
+                        },
+                        "key": {
+                            "type": "string",
+                            "description": "要获取的字段名，例如：password、api_key、username",
+                        },
+                        "mount_point": {
+                            "type": "string",
+                            "description": "KV secrets engine 的 mount point",
+                            "default": "secret",
+                        },
+                    },
+                    "required": ["path", "key"],
                 },
             ),
             Tool(
@@ -971,6 +1081,12 @@ async def main():
             elif name == "vault_kv_get":
                 result = await vault_server.vault_kv_get(
                     path=arguments.get("path"),
+                    mount_point=arguments.get("mount_point", "secret"),
+                )
+            elif name == "vault_kv_get_key":
+                result = await vault_server.vault_kv_get_key(
+                    path=arguments.get("path"),
+                    key=arguments.get("key"),
                     mount_point=arguments.get("mount_point", "secret"),
                 )
             elif name == "vault_kv_list":

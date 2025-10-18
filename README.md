@@ -326,8 +326,12 @@ AI: ✓ Secret retrieved successfully and sent to Slack
 # 登录
 "帮我登录到 Vault"
 
-# 读取 KV secret
+# 读取完整的 KV secret
 "查看 secret/myapp/config 的内容"
+
+# 🆕 只获取某个字段的值
+"获取 secret/myapp/config 中的 password 字段"
+"查询 myapp/config 的 api_key"
 
 # 获取数据库临时凭证
 "获取数据库 readonly 角色的临时凭证"
@@ -344,6 +348,53 @@ AI: ✓ Secret retrieved successfully and sent to Slack
 ```
 
 ### 使用场景
+
+#### 🆕 获取单个字段 vs 完整 Secret
+
+**使用 `vault_kv_get_key`（获取单个字段）：**
+```
+你: "获取 myapp/config 的 password"
+
+AI (RETURN_DATA_TO_AI=true):
+✓ 成功获取
+- Path: secret/myapp/config
+- Key: password
+- Value: my-secret-password
+
+AI (RETURN_DATA_TO_AI=false):
+✓ 成功获取并已发送到 Slack
+- Path: secret/myapp/config
+- Key: password
+- 值已发送到 Slack（不显示给 AI）
+```
+
+**使用 `vault_kv_get`（获取完整 Secret）：**
+```
+你: "获取 myapp/config 的所有配置"
+
+AI 返回：
+{
+  "username": "admin",
+  "password": "my-secret-password",
+  "api_key": "sk-xxx",
+  "db_host": "localhost"
+}
+```
+
+**何时使用哪个：**
+- ✅ 只需要一个字段 → 使用 `vault_kv_get_key`（更精确，Slack 消息更简洁）
+- ✅ 需要多个/所有字段 → 使用 `vault_kv_get`（获取完整配置）
+- ✅ 不确定有哪些字段 → 先用 `vault_kv_get`（会返回 `available_keys`）
+
+**错误处理：**
+```
+你: "获取 myapp/config 的 invalid_key"
+
+AI: 
+❌ Key 'invalid_key' not found in secret
+Available keys: ["username", "password", "api_key", "db_host"]
+→ 自动提示可用的字段名
+```
 
 #### 📤 登出 Vault
 ```
@@ -384,10 +435,11 @@ AI：✓ 已登出 Vault
 2. **vault_logout** - 登出 Vault，可选择是否清空 AWS 凭证缓存
    - `clear_aws_cache=false`（默认）：只清空 Vault token
    - `clear_aws_cache=true`：同时清空 aws-vault 凭证缓存
-3. **vault_kv_get** - 读取 KV secret
-4. **vault_kv_list** - 列出 KV secrets
-5. **vault_read** - 读取动态 secrets（数据库凭证等）
-6. **vault_list** - 列出任意路径
+3. **vault_kv_get** - 读取完整的 KV secret（所有字段）
+4. **vault_kv_get_key** - 读取 KV secret 中的单个字段 🆕
+5. **vault_kv_list** - 列出 KV secrets
+6. **vault_read** - 读取动态 secrets（数据库凭证等）
+7. **vault_list** - 列出任意路径
 
 ## 故障排查
 
