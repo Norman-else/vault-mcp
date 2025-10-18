@@ -295,33 +295,59 @@ class VaultMCPServer:
                     }
                 )
 
-                credentials_text = ""
+                username = ""
+                password = ""
+                
                 if "username" in data:
-                    # 确保值是字符串，处理复杂对象
                     username = (
                         str(data["username"])
                         if not isinstance(data["username"], str)
                         else data["username"]
                     )
-                    credentials_text += f"*Username:* `{username[:500]}`\n"  # 限制长度
+                    username = username[:500]  # 限制长度
+                
                 if "password" in data:
                     password = (
                         str(data["password"])
                         if not isinstance(data["password"], str)
                         else data["password"]
                     )
-                    credentials_text += f"*Password:* `{password[:500]}`\n"  # 限制长度
+                    password = password[:500]  # 限制长度
 
-                if credentials_text:
+                # 添加分隔线
+                blocks.append({"type": "divider"})
+
+                # 使用代码块格式显示凭证，便于选中复制
+                if username or password:
+                    credentials_code = ""
+                    if username:
+                        credentials_code += f"Username: {username}\n"
+                    if password:
+                        credentials_code += f"Password: {password}"
+                    
+                    # 使用 Section + mrkdwn 的代码块格式
                     blocks.append(
                         {
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": credentials_text.strip(),
+                                "text": f"```\n{credentials_code}\n```",
                             },
                         }
                     )
+                
+                # 添加提示文字
+                blocks.append(
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": "💡 _Click the code block above and select to copy credentials_",
+                            }
+                        ],
+                    }
+                )
             else:
                 # 其他查询：显示 service 和完整结果
                 blocks.append(
@@ -333,6 +359,9 @@ class VaultMCPServer:
                         },
                     }
                 )
+
+                # 添加分隔线
+                blocks.append({"type": "divider"})
 
                 # 使用安全的格式化方法
                 formatted_data = self._safe_format_data(data)
