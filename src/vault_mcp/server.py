@@ -283,7 +283,17 @@ class VaultMCPServer:
                         }
                     )
             else:
-                # 其他查询：显示完整结果
+                # 其他查询：显示 service 和完整结果
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Service:* `{service_name}`",
+                        },
+                    }
+                )
+
                 data_text = (
                     "```\n" + json.dumps(data, indent=2, ensure_ascii=False) + "\n```"
                 )

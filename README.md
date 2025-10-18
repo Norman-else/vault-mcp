@@ -180,6 +180,7 @@ Password: ********
 🔐 Vault KV Secret Retrieved
 Environment: PROD | Time: 2024-10-18 10:30:00
 ─────────────────────
+Service: secret/myapp/config
 {
   "api_key": "sk-...",
   "endpoint": "https://..."
