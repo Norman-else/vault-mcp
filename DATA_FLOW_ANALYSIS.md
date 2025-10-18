@@ -95,6 +95,28 @@
 - ❌ Vault metadata（版本号、创建时间等）
 - ❌ Vault 租约信息（KV secret 没有租约）
 
+### ✅ 隐私模式响应（RETURN_DATA_TO_AI=false）
+
+```json
+{
+  "success": true,
+  "path": "secret/myapp/config",
+  "message": "✓ Secret retrieved successfully and sent to Slack",
+  "data_returned_to_ai": false,
+  "slack_notification_sent": true,
+  "available_keys": ["username", "password", "api_key", "db_host"]  // ✅ 只返回字段名
+}
+```
+
+**暴露的信息：**
+- ✅ Secret 路径
+- ✅ 字段名称（keys）
+- ✅ 操作状态
+
+**不暴露的信息：**
+- ❌ 字段值（values）- 敏感数据完全隐藏
+- ❌ Vault metadata
+
 ### ❌ 错误响应（任何配置）
 
 ```json
@@ -125,7 +147,8 @@
 
 | 保护项 | 描述 | 效果 |
 |--------|------|------|
-| **数据隐藏** | 不返回 data 字段 | AI 看不到敏感内容 |
+| **值隐藏** | 不返回字段值 | AI 看不到敏感内容 |
+| **键可见** | 返回字段名称列表 | AI 可以理解数据结构 |
 | **仅状态信息** | 只返回成功/失败状态 | 最小化信息泄露 |
 | **路径仍可见** | 路径名称仍然返回 | ⚠️ 轻微风险 |
 
@@ -193,10 +216,12 @@ else:
 |--------|------------------------|-------------------------|
 | **success 状态** | ✅ 返回 | ✅ 返回 |
 | **path 路径** | ✅ 返回 | ✅ 返回 |
-| **data 字段** | ✅ 返回（完整） | ❌ 不返回 |
-| **username** | ✅ 返回 | ❌ 不返回 |
-| **password** | ✅ 返回 | ❌ 不返回 |
-| **其他 secrets** | ✅ 返回 | ❌ 不返回 |
+| **available_keys** | ✅ 返回（包含在 data 中） | ✅ 返回（单独字段） |
+| **data 字段（完整）** | ✅ 返回 | ❌ 不返回 |
+| **字段值（values）** | ✅ 返回 | ❌ 不返回 |
+| **username 值** | ✅ 返回 | ❌ 不返回 |
+| **password 值** | ✅ 返回 | ❌ 不返回 |
+| **其他 secret 值** | ✅ 返回 | ❌ 不返回 |
 | **错误详情** | ✅ 返回 | ✅ 返回（当前实现）⚠️ |
 | **Slack 通知** | ✅ 发送 | ✅ 发送 |
 | **AI 对话记录** | ⚠️ 包含敏感数据 | ✅ 不含敏感数据 |
@@ -208,6 +233,12 @@ else:
 - ⚠️ 包括所有敏感字段（password、api_key、token 等）
 - ⚠️ 这些数据会保存在 AI 对话历史中
 - ⚠️ 错误信息也可能泄露系统信息
+
+**当 RETURN_DATA_TO_AI=false 时：**
+- ✅ 只返回字段名称（keys），不返回字段值（values）
+- ✅ AI 可以理解数据结构，但看不到敏感内容
+- ✅ 敏感数据只通过 Slack 发送
+- ✅ AI 对话历史不包含任何敏感信息
 
 **推荐配置：**
 - 生产环境：`RETURN_DATA_TO_AI=false` + `SLACK_ENABLED=true`

@@ -217,6 +217,7 @@ AI: ✓ Secret retrieved successfully and sent to Slack
     - Path: database/creds/readonly
     - Data returned to AI: No
     - Slack notification sent: Yes
+    - Available keys: ["username", "password"]  ← 可以看到字段名
     - Lease ID: database/creds/readonly/abc123
     - Lease duration: 3600 seconds
 ```
@@ -237,7 +238,8 @@ AI: ✓ Secret retrieved successfully and sent to Slack
 |--------|--------------------------|---------------------------|
 | **查询状态** | ✅ 返回成功/失败 | ✅ 返回成功/失败 |
 | **Secret 路径** | ✅ 返回 | ✅ 返回 |
-| **敏感数据** | ✅ 完整返回给 AI | ❌ 不返回给 AI |
+| **字段名称 (keys)** | ✅ 返回 | ✅ 返回 |
+| **字段值 (values)** | ✅ 完整返回 | ❌ 不返回 |
 | **Slack 通知** | ✅ 同时发送 | ✅ 同时发送 |
 | **AI 对话记录** | ⚠️ 包含完整 secret | ✅ 不含敏感数据 |
 | **租约信息** | ✅ 返回（如有） | ✅ 返回（如有） |
@@ -264,12 +266,18 @@ AI: ✓ Secret retrieved successfully and sent to Slack
   "message": "✓ Secret retrieved successfully and sent to Slack",
   "data_returned_to_ai": false,
   "slack_notification_sent": true,
+  "available_keys": ["username", "password"],  // ✅ 可以看到字段名
   "lease_id": "database/creds/readonly/abc123",  // 租约信息保留
   "lease_duration": 3600
 }
 
 # 在两种模式下，Slack 都会收到完整凭证
 ```
+
+**好处：**
+- ✅ AI 知道有哪些字段可用（如 username, password）
+- ✅ AI 可以更好地理解 secret 的结构
+- ✅ 但 AI 看不到敏感的字段值
 
 ## 使用示例
 

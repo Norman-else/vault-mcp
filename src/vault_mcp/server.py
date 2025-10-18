@@ -569,6 +569,8 @@ class VaultMCPServer:
 
             # 根据配置决定是否返回数据给 AI
             if not self.return_data_to_ai:
+                # 只返回 keys，不返回 values
+                keys_only = list(data.keys()) if isinstance(data, dict) else []
                 return json.dumps(
                     {
                         "success": True,
@@ -576,6 +578,7 @@ class VaultMCPServer:
                         "message": "✓ Secret retrieved successfully and sent to Slack",
                         "data_returned_to_ai": False,
                         "slack_notification_sent": self.slack_enabled,
+                        "available_keys": keys_only,
                     },
                     indent=2,
                 )
@@ -666,12 +669,15 @@ class VaultMCPServer:
 
             # 根据配置决定是否返回数据给 AI
             if not self.return_data_to_ai:
+                # 只返回 keys，不返回 values
+                keys_only = list(response["data"].keys()) if isinstance(response["data"], dict) else []
                 result = {
                     "success": True,
                     "path": path,
                     "message": "✓ Secret retrieved successfully and sent to Slack",
                     "data_returned_to_ai": False,
                     "slack_notification_sent": self.slack_enabled,
+                    "available_keys": keys_only,
                 }
                 # 只返回租约信息，不返回敏感数据
                 if response.get("lease_id"):
