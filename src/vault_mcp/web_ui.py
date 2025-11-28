@@ -267,9 +267,31 @@ class VaultWebUI:
             """Get current environment info."""
             return jsonify({
                 'success': True,
-                'environment': self.vault_server.current_env or 'Not logged in',
-                'authenticated': self.vault_server._ensure_authenticated()
+                'environment': self.vault_server.current_env,
+                'authenticated': self.vault_server._ensure_authenticated(),
+                'available_environments': list(self.vault_server.environments.keys())
             })
+
+        @self.app.route('/api/login', methods=['POST'])
+        def login():
+            """Login to Vault environment from Web UI."""
+            try:
+                data = request.get_json()
+                environment = data.get('environment', 'dev')
+                
+                # Call synchronous login method with from_web_ui=True
+                # This enables GUI-based MFA prompts on Windows/macOS
+                result_json = self.vault_server.login_sync(environment, from_web_ui=True)
+                result = json.loads(result_json)
+                
+                return jsonify(result)
+                
+            except Exception as e:
+                logger.error(f"Error logging in: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
     
     def _get_html_template(self):
         """Return the HTML template for the UI."""

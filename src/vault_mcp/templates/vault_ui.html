@@ -590,6 +590,7 @@
         }
 
         .modal-content {
+            position: relative;
             background: var(--bg-card);
             width: 100%;
             max-width: 500px;
@@ -599,6 +600,24 @@
             transform: scale(0.95);
             transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
             padding: 32px;
+        }
+        
+        .modal-close-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s;
+        }
+        
+        .modal-close-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
         }
 
         .modal-overlay.active .modal-content {
@@ -672,6 +691,49 @@
 
         @keyframes spin { to { transform: rotate(360deg); } }
         
+        /* Environment Switcher - Direct buttons */
+        .env-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .env-btn {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-muted);
+        }
+        
+        .env-btn:hover {
+            background-color: var(--bg-hover);
+            color: var(--text-primary);
+            border-color: var(--text-muted);
+        }
+        
+        .env-btn.active {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+        
+        .env-btn.active::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--success);
+            margin-right: 6px;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .sidebar { width: 0; overflow: hidden; }
@@ -734,9 +796,11 @@
                     <span class="breadcrumb-current">Root</span>
                 </div>
                 
-                <div class="env-badge" id="envBadge">
-                    <div class="env-dot"></div>
-                    <span>Loading...</span>
+                <div class="env-switcher" id="envSwitcher">
+                    <button class="env-btn" data-env="dev" onclick="selectEnv('dev')">DEV</button>
+                    <button class="env-btn" data-env="sat" onclick="selectEnv('sat')">SAT</button>
+                    <button class="env-btn" data-env="prod" onclick="selectEnv('prod')">PROD</button>
+                    <button class="env-btn" data-env="local" onclick="selectEnv('local')">LOCAL</button>
                 </div>
             </header>
 
@@ -830,6 +894,29 @@
         </div>
     </div>
 
+    <!-- Login Modal -->
+    <div class="modal-overlay" id="loginModal" onclick="closeLoginModalIfAuthenticated(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="modal-close-btn" id="loginCloseBtn" onclick="closeLoginModal()" style="display: none;">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <h2 class="modal-title">Login to Vault</h2>
+            <p style="margin-bottom: 20px; color: var(--text-secondary); font-size: 14px;">
+                Login to <strong id="loginEnvDisplay" style="color: var(--primary);">DEV</strong> environment to continue.
+            </p>
+            <input type="hidden" id="loginEnvSelect" value="dev">
+            <div id="loginMessage" style="margin-bottom: 16px; color: var(--text-muted); font-size: 14px; display: none;">
+                Authenticating... please wait.
+            </div>
+            <div class="modal-actions">
+                <button class="btn-primary" onclick="performLogin()" style="width: 100%">Login</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast">
         <div id="toastIcon"></div>
@@ -879,22 +966,128 @@
 
         // --- API Interaction ---
 
+        let currentEnv = null;
+        
         async function loadEnvironment() {
             try {
                 const response = await fetch('/api/environment');
                 const data = await response.json();
-                if (data.success) {
-                    const badge = document.getElementById('envBadge');
-                    badge.querySelector('span').textContent = data.environment.toUpperCase();
+                
+                if (data.success && data.authenticated && data.environment) {
+                    currentEnv = data.environment;
+                    updateEnvButtons();
+                    document.getElementById('loginModal').classList.remove('active');
+                } else {
+                    currentEnv = null;
+                    updateEnvButtons();
+                    document.getElementById('loginModal').classList.add('active');
                 }
             } catch (error) {
                 console.error('Error loading environment:', error);
             }
         }
+        
+        function updateEnvButtons() {
+            document.querySelectorAll('.env-btn').forEach(btn => {
+                const env = btn.getAttribute('data-env');
+                if (env === currentEnv) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+        
+        function selectEnv(env) {
+            // If already on this env, do nothing
+            if (env === currentEnv) return;
+            
+            // Set login modal and show it
+            document.getElementById('loginEnvSelect').value = env;
+            document.getElementById('loginEnvDisplay').textContent = env.toUpperCase();
+            showLoginModal();
+        }
+        
+        function showLoginModal() {
+            const modal = document.getElementById('loginModal');
+            const closeBtn = document.getElementById('loginCloseBtn');
+            const msg = document.getElementById('loginMessage');
+            
+            // Show close button only if already authenticated
+            closeBtn.style.display = currentEnv ? 'block' : 'none';
+            
+            // Reset message
+            msg.style.display = 'none';
+            
+            modal.classList.add('active');
+        }
+        
+        function closeLoginModal() {
+            document.getElementById('loginModal').classList.remove('active');
+        }
+        
+        function closeLoginModalIfAuthenticated(event) {
+            // Only close if clicking on overlay (not content) and already authenticated
+            if (event.target === event.currentTarget && currentEnv) {
+                closeLoginModal();
+            }
+        }
+
+        async function performLogin() {
+            const env = document.getElementById('loginEnvSelect').value;
+            const msg = document.getElementById('loginMessage');
+            const btn = document.querySelector('#loginModal .btn-primary');
+            
+            msg.style.display = 'block';
+            msg.textContent = `Authenticating with ${env.toUpperCase()}... check your terminal for MFA if needed.`;
+            msg.style.color = 'var(--text-muted)';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ environment: env })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(`Logged in to ${env.toUpperCase()}`);
+                    document.getElementById('loginModal').classList.remove('active');
+                    // Update currentEnv immediately to prevent 401 from re-showing modal
+                    currentEnv = env;
+                    updateEnvButtons();
+                    loadEnvironment();
+                    loadSecrets();
+                } else {
+                    msg.textContent = result.message || 'Login failed';
+                    msg.style.color = 'var(--danger)';
+                    showToast('Login failed', 'error');
+                }
+            } catch (error) {
+                msg.textContent = 'Network error during login';
+                msg.style.color = 'var(--danger)';
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        }
+
 
         async function loadSecrets(path = '') {
             try {
                 const response = await fetch(`/api/secrets/list?path=${encodeURIComponent(path)}&mount_point=secret`);
+                
+                if (response.status === 401) {
+                    // Only show login modal if not already authenticated
+                    if (!currentEnv) {
+                        showLoginModal();
+                    }
+                    return;
+                }
+
                 const data = await response.json();
                 const listEl = document.getElementById('secretList');
                 listEl.innerHTML = '';
@@ -985,6 +1178,9 @@
                                 <div class="value-masked" id="val-${key}">•••••••••••••••</div>
                             </div>
                             <div class="kv-actions">
+                                <button class="btn-icon" title="Edit Key" onclick="editKey('${key}')">
+                                    <svg class="icon" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                </button>
                                 <button class="btn-icon" title="Toggle Visibility" onclick="toggleValue(this, '${key}', '${escapedValue}')">
                                     <svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                                 </button>
@@ -1154,6 +1350,17 @@
             navigator.clipboard.writeText(value).then(() => {
                 showToast('Copied to clipboard');
             });
+        }
+        
+        function editKey(key) {
+            // Fill key into the input field
+            document.getElementById('newKey').value = key;
+            // Clear value field
+            document.getElementById('newValue').value = '';
+            // Focus on value input
+            document.getElementById('newValue').focus();
+            // Scroll to form section
+            document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
         function showToast(msg, type = 'success') {

@@ -178,36 +178,93 @@ class VaultMCPServer:
             logger.error(f"Error switching kubectl context: {e}")
             return False
 
-    def _get_aws_credentials_via_awsvault(self, aws_profile: str):
+    def _get_aws_credentials_via_awsvault(self, aws_profile: str, from_web_ui: bool = False):
         """通过 aws-vault 主动获取 AWS 凭证.
 
         Args:
             aws_profile: AWS profile 名称
+            from_web_ui: 是否从 Web UI 调用（需要弹出 GUI 窗口）
         """
+        import platform
+        
         try:
             logger.info(
                 f"Trying to get credentials via aws-vault for profile: {aws_profile}"
             )
             logger.info(
-                "⏳ If MFA prompt appears, please enter your code (30 seconds timeout)..."
+                "⏳ If MFA prompt appears, please enter your code (90 seconds timeout)..."
             )
 
             # 执行 aws-vault export 获取凭证（可能需要 MFA 输入）
             cmd = ["aws-vault", "export", aws_profile, "--format=json"]
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=30,
-            )
+            system = platform.system()
+            
+            # When called from Web UI, need special handling to show MFA GUI prompts
+            if from_web_ui:
+                if system == "Windows":
+                    # Windows: Use CREATE_NEW_CONSOLE to show MFA input window
+                    CREATE_NEW_CONSOLE = 0x00000010
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        creationflags=CREATE_NEW_CONSOLE,
+                    )
+                    try:
+                        stdout, stderr = process.communicate(timeout=90)
+                        returncode = process.returncode
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        raise
+                elif system == "Darwin":
+                    # macOS: aws-vault uses native osascript dialog for MFA
+                    env = os.environ.copy()
+                    env["AWS_VAULT_PROMPT"] = "osascript"  # Force osascript prompt method
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        env=env,
+                    )
+                    try:
+                        stdout, stderr = process.communicate(timeout=90)
+                        returncode = process.returncode
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        raise
+                else:
+                    # Linux/other: Standard execution
+                    result = subprocess.run(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=90,
+                    )
+                    stdout = result.stdout
+                    stderr = result.stderr
+                    returncode = result.returncode
+            else:
+                # Called from MCP/AI: Use standard subprocess which allows terminal MFA
+                result = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=30,
+                )
+                stdout = result.stdout
+                stderr = result.stderr
+                returncode = result.returncode
 
-            if result.returncode != 0:
-                logger.warning(f"aws-vault export failed: {result.stderr}")
+            if returncode != 0:
+                logger.warning(f"aws-vault export failed: {stderr}")
                 return None
 
             # 解析 JSON 输出
-            creds_json = json.loads(result.stdout)
+            creds_json = json.loads(stdout)
             logger.info("✓ Successfully obtained AWS credentials via aws-vault")
 
             return {
@@ -217,7 +274,8 @@ class VaultMCPServer:
             }
 
         except subprocess.TimeoutExpired:
-            logger.error("✗ aws-vault command timed out (30 seconds)")
+            timeout = 90 if from_web_ui else 30
+            logger.error(f"✗ aws-vault command timed out ({timeout} seconds)")
             logger.error("Please make sure you enter MFA code when prompted")
             return None
         except Exception as e:
@@ -483,11 +541,12 @@ class VaultMCPServer:
         except Exception as e:
             logger.error(f"Failed to send Slack fallback notification: {e}")
 
-    def _aws_login(self, env_config: dict) -> bool:
+    def _aws_login(self, env_config: dict, from_web_ui: bool = False) -> bool:
         """使用 AWS IAM 认证登录 Vault.
 
         Args:
             env_config: 环境配置字典
+            from_web_ui: 是否从 Web UI 调用
         """
         try:
             vault_addr = env_config["vault_addr"]
@@ -516,7 +575,7 @@ class VaultMCPServer:
 
             # 方式 1: 尝试通过 aws-vault 获取凭证
             logger.info("Trying to get credentials from aws-vault...")
-            aws_env = self._get_aws_credentials_via_awsvault(aws_profile)
+            aws_env = self._get_aws_credentials_via_awsvault(aws_profile, from_web_ui=from_web_ui)
 
             if aws_env and aws_env.get("AWS_ACCESS_KEY_ID"):
                 access_key = aws_env["AWS_ACCESS_KEY_ID"]
@@ -570,11 +629,12 @@ class VaultMCPServer:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
-    async def vault_login(self, environment: str = "dev") -> str:
-        """登录到指定环境的 Vault.
-
+    def login_sync(self, environment: str = "dev", from_web_ui: bool = False) -> str:
+        """Synchronous version of vault_login.
+        
         Args:
             environment: 环境名称 (dev/sat/prod/local)
+            from_web_ui: 是否从 Web UI 调用（影响 MFA 弹窗方式）
         """
         if environment not in self.environments:
             return json.dumps(
@@ -610,7 +670,7 @@ class VaultMCPServer:
                 )
 
         # AWS IAM login for other environments
-        if self._aws_login(env_config):
+        if self._aws_login(env_config, from_web_ui=from_web_ui):
             self.current_env = environment
             return json.dumps(
                 {
@@ -627,6 +687,14 @@ class VaultMCPServer:
                     "message": f"Failed to authenticate with {environment.upper()} Vault. Please check your AWS credentials and Vault configuration.",
                 }
             )
+
+    async def vault_login(self, environment: str = "dev") -> str:
+        """登录到指定环境的 Vault.
+
+        Args:
+            environment: 环境名称 (dev/sat/prod/local)
+        """
+        return self.login_sync(environment)
 
     async def vault_logout(self, clear_aws_cache: bool = False) -> str:
         """登出 Vault，清空所有登录状态和缓存.
@@ -1005,11 +1073,8 @@ class VaultMCPServer:
         Returns:
             JSON string with success status and URL
         """
-        if not self._ensure_authenticated():
-            return json.dumps({
-                "success": False,
-                "error": "Not authenticated. Please login first."
-            })
+        # Allow opening Web UI without authentication
+        # The UI itself will handle login if not authenticated
         
         if not WEB_UI_AVAILABLE:
             return json.dumps({
