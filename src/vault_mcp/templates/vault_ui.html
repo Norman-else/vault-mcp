@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vault Manager</title>
+    <style>
+        :root {
+            /* Dark Mode (Default) */
+            --bg-body: #0f172a;
+            --bg-sidebar: #1e293b;
+            --bg-card: #1e293b;
+            --bg-hover: #334155;
+            --bg-input: #0f172a;
+            
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --primary-glow: rgba(59, 130, 246, 0.5);
+            
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            
+            --border: #334155;
+            --border-light: #475569;
+            
+            --radius-sm: 6px;
+            --radius-md: 12px;
+            --radius-lg: 24px;
+            
+            --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+            
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15);
+        }
+
+        [data-theme="light"] {
+            --bg-body: #f8fafc;
+            --bg-sidebar: #ffffff;
+            --bg-card: #ffffff;
+            --bg-hover: #f1f5f9;
+            --bg-input: #f8fafc;
+            
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --primary-glow: rgba(59, 130, 246, 0.25);
+            
+            --border: #e2e8f0;
+            --border-light: #cbd5e1;
+            
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            font-family: var(--font-ui);
+            background-color: var(--bg-body);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Icons */
+        .icon {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* Layout */
+        .app-shell {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-header {
+            height: 70px;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+        
+        .logo-icon {
+            color: var(--primary);
+            filter: drop-shadow(0 0 8px var(--primary-glow));
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 16px;
+        }
+
+        .sidebar-footer {
+            padding: 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            padding-left: 12px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .nav-item:hover {
+            background-color: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background-color: rgba(59, 130, 246, 0.1);
+            color: var(--primary);
+        }
+
+        .theme-toggle {
+            width: 100%;
+            border: none;
+            background: transparent;
+            justify-content: flex-start;
+        }
+
+        .btn-new-secret {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .btn-new-secret:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .secret-tree {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            color: var(--text-secondary);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .tree-item:hover {
+            background-color: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .tree-item.folder {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .tree-item.active {
+            background-color: var(--bg-hover);
+            color: var(--primary);
+            border-left: 3px solid var(--primary);
+        }
+
+        .tree-icon {
+            width: 16px;
+            height: 16px;
+            opacity: 0.7;
+        }
+
+        /* Main Content */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            background-color: var(--bg-body);
+            transition: background-color 0.3s ease;
+        }
+
+        .top-bar {
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            background-color: var(--bg-body); /* Transparent/Body bg */
+            border-bottom: 1px solid var(--border);
+            transition: border-color 0.3s ease;
+        }
+
+        .breadcrumbs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        
+        .breadcrumb-item {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .breadcrumb-item:hover {
+            color: var(--text-primary);
+        }
+        
+        .breadcrumb-separator {
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+        
+        .breadcrumb-current {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .env-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background-color: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .env-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Secret View */
+        .secret-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 32px;
+        }
+
+        .secret-title h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .secret-path-display {
+            font-family: var(--font-mono);
+            background: var(--bg-sidebar);
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .secret-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+            margin-bottom: 24px;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .kv-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .kv-item {
+            display: grid;
+            grid-template-columns: 250px 1fr auto;
+            gap: 20px;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .kv-item:last-child {
+            border-bottom: none;
+        }
+
+        .kv-item:hover {
+            background-color: var(--bg-hover);
+        }
+
+        .key-name {
+            font-family: var(--font-mono);
+            color: var(--primary);
+            font-weight: 500;
+            font-size: 14px;
+            word-break: break-all;
+        }
+
+        .value-container {
+            position: relative;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .value-masked {
+            color: var(--text-muted);
+            letter-spacing: 3px;
+            filter: blur(4px);
+            transition: all 0.3s;
+            user-select: none;
+        }
+
+        .value-revealed {
+            color: var(--text-primary);
+            filter: none;
+            letter-spacing: normal;
+        }
+
+        .kv-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: var(--bg-body);
+            color: var(--text-primary);
+            border-color: var(--text-muted);
+        }
+
+        /* Form Elements */
+        .form-section {
+            padding: 24px;
+            background-color: var(--bg-hover);
+            border-top: 1px solid var(--border);
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr auto;
+            gap: 16px;
+            align-items: end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 60vh;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 24px;
+            color: var(--border-light);
+            stroke-width: 1.5;
+        }
+        
+        .empty-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            width: 100%;
+            max-width: 500px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            padding: 32px;
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 32px;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-hover);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 16px 24px;
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(100px);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 200;
+        }
+
+        .toast.active {
+            transform: translateY(0);
+        }
+        
+        .toast-success { border-left: 4px solid var(--success); }
+        .toast-error { border-left: 4px solid var(--danger); }
+
+        /* Spinner */
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(59, 130, 246, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar { width: 0; overflow: hidden; }
+            .sidebar.active { width: 280px; position: absolute; z-index: 50; height: 100%; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-shell">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg class="icon logo-icon" viewBox="0 0 24 24">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <span>Vault MCP</span>
+                </div>
+            </div>
+
+            <div class="sidebar-content">
+                <div class="nav-section">
+                    <button class="btn-new-secret" onclick="openNewSecretModal()">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        New Secret
+                    </button>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-title">Secrets Explorer</div>
+                    <div class="secret-tree" id="secretList">
+                        <!-- Loaded via JS -->
+                        <div style="padding: 20px; display: flex; justify-content: center;">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Theme Toggle Footer -->
+            <div class="sidebar-footer">
+                <button class="nav-item theme-toggle" onclick="toggleTheme()">
+                    <svg class="icon" id="themeIcon" viewBox="0 0 24 24">
+                        <!-- Injected via JS -->
+                    </svg>
+                    <span id="themeText">Dark Mode</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main">
+            <header class="top-bar">
+                <div class="breadcrumbs" id="breadcrumbs">
+                    <span class="breadcrumb-current">Root</span>
+                </div>
+                
+                <div class="env-badge" id="envBadge">
+                    <div class="env-dot"></div>
+                    <span>Loading...</span>
+                </div>
+            </header>
+
+            <div class="content-area">
+                <!-- Empty State -->
+                <div class="empty-state" id="emptyState">
+                    <svg class="icon empty-icon" viewBox="0 0 24 24">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <div class="empty-title">Select a Secret</div>
+                    <p>Choose a secret from the sidebar or create a new one to get started.</p>
+                </div>
+
+                <!-- Secret Detail -->
+                <div id="secretEditor" style="display: none;">
+                    <div class="container">
+                        <div class="secret-header">
+                            <div class="secret-title">
+                                <h1>
+                                    <svg class="icon" style="color: var(--primary);" viewBox="0 0 24 24">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                    </svg>
+                                    <span id="secretPathTitle">...</span>
+                                </h1>
+                                <div class="secret-meta" id="secretMeta">
+                                    <!-- Meta info -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-title">Key-Value Pairs</span>
+                            </div>
+                            
+                            <div class="kv-list" id="kvRows">
+                                <!-- Rows loaded via JS -->
+                            </div>
+
+                            <!-- Add Key Form -->
+                            <div class="form-section">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label class="label">Key</label>
+                                        <input type="text" class="input" id="newKey" placeholder="API_KEY">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="label">Value</label>
+                                        <input type="password" class="input" id="newValue" placeholder="Enter secret value">
+                                    </div>
+                                    <button class="btn-primary" onclick="addOrUpdateKey()">Add / Update</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="newSecretModal">
+        <div class="modal-content">
+            <h2 class="modal-title">Create New Secret</h2>
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="label">Secret Path</label>
+                <input type="text" class="input" id="newSecretPath" placeholder="myapp/prod/database">
+            </div>
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="label">Mount Point</label>
+                <input type="text" class="input" id="newSecretMount" value="secret">
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="form-group">
+                    <label class="label">Initial Key (Optional)</label>
+                    <input type="text" class="input" id="newSecretKey" placeholder="username">
+                </div>
+                <div class="form-group">
+                    <label class="label">Initial Value (Optional)</label>
+                    <input type="password" class="input" id="newSecretValue" placeholder="admin">
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeNewSecretModal()">Cancel</button>
+                <button class="btn-primary" onclick="createNewSecret()">Create Secret</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">
+        <div id="toastIcon"></div>
+        <div id="toastMessage">Operation successful</div>
+    </div>
+
+    <script>
+        let currentSecret = null;
+        let currentMountPoint = 'secret';
+
+        // --- Theme Logic ---
+        function initTheme() {
+            const savedTheme = localStorage.getItem('vault_theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (savedTheme === 'light' || (!savedTheme && !prefersDark)) {
+                setTheme('light');
+            } else {
+                setTheme('dark');
+            }
+        }
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('vault_theme', theme);
+            updateThemeIcon(theme);
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            setTheme(current === 'light' ? 'dark' : 'light');
+        }
+
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            const text = document.getElementById('themeText');
+            if (theme === 'light') {
+                // Show Moon (to switch to dark)
+                icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+                text.textContent = 'Switch to Dark';
+            } else {
+                // Show Sun (to switch to light)
+                icon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+                text.textContent = 'Switch to Light';
+            }
+        }
+
+        // --- API Interaction ---
+
+        async function loadEnvironment() {
+            try {
+                const response = await fetch('/api/environment');
+                const data = await response.json();
+                if (data.success) {
+                    const badge = document.getElementById('envBadge');
+                    badge.querySelector('span').textContent = data.environment.toUpperCase();
+                }
+            } catch (error) {
+                console.error('Error loading environment:', error);
+            }
+        }
+
+        async function loadSecrets(path = '') {
+            try {
+                const response = await fetch(`/api/secrets/list?path=${encodeURIComponent(path)}&mount_point=secret`);
+                const data = await response.json();
+                const listEl = document.getElementById('secretList');
+                listEl.innerHTML = '';
+
+                // Breadcrumbs update
+                updateBreadcrumbs(path);
+
+                // Back button
+                if (path) {
+                    const backItem = document.createElement('div');
+                    backItem.className = 'tree-item';
+                    backItem.innerHTML = `
+                        <svg class="icon tree-icon" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                        <span>.. (Back)</span>
+                    `;
+                    backItem.onclick = () => {
+                        const parentPath = path.split('/').slice(0, -2).join('/');
+                        loadSecrets(parentPath ? parentPath + '/' : '');
+                    };
+                    listEl.appendChild(backItem);
+                }
+
+                if (data.success && data.secrets.length > 0) {
+                    data.secrets.forEach(secret => {
+                        const el = document.createElement('div');
+                        el.className = `tree-item ${secret.type === 'folder' ? 'folder' : ''}`;
+                        
+                        const icon = secret.type === 'folder' 
+                            ? '<svg class="icon tree-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>'
+                            : '<svg class="icon tree-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>';
+
+                        el.innerHTML = `${icon}<span>${secret.name}</span>`;
+                        
+                        if (secret.type === 'secret') {
+                            el.onclick = () => loadSecret(secret.path);
+                        } else {
+                            el.onclick = () => loadSecrets(secret.path);
+                        }
+                        listEl.appendChild(el);
+                    });
+                } else {
+                    listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px;">No secrets found</div>';
+                }
+            } catch (error) {
+                showToast('Error loading secrets', 'error');
+            }
+        }
+
+        async function loadSecret(path) {
+            try {
+                const response = await fetch(`/api/secrets/get?path=${encodeURIComponent(path)}&mount_point=secret`);
+                const data = await response.json();
+
+                if (data.success) {
+                    currentSecret = path;
+                    
+                    // Switch view
+                    document.getElementById('emptyState').style.display = 'none';
+                    document.getElementById('secretEditor').style.display = 'block';
+                    
+                    // Update Header
+                    document.getElementById('secretPathTitle').textContent = path;
+                    
+                    let metaHtml = '';
+                    if (data.metadata.version) {
+                        metaHtml += `<div class="meta-item"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg> v${data.metadata.version}</div>`;
+                    }
+                    if (data.metadata.updated_time) {
+                        const date = new Date(data.metadata.updated_time).toLocaleString();
+                        metaHtml += `<div class="meta-item"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> ${date}</div>`;
+                    }
+                    document.getElementById('secretMeta').innerHTML = metaHtml;
+
+                    // Render Rows
+                    const list = document.getElementById('kvRows');
+                    list.innerHTML = '';
+                    
+                    Object.entries(data.data).forEach(([key, value]) => {
+                        const item = document.createElement('div');
+                        item.className = 'kv-item';
+                        
+                        // Only escape value for display attribute, not for DOM text content assignment which is safe
+                        const escapedValue = escapeHtml(String(value));
+                        
+                        item.innerHTML = `
+                            <div class="key-name">${key}</div>
+                            <div class="value-container">
+                                <div class="value-masked" id="val-${key}">•••••••••••••••</div>
+                            </div>
+                            <div class="kv-actions">
+                                <button class="btn-icon" title="Toggle Visibility" onclick="toggleValue(this, '${key}', '${escapedValue}')">
+                                    <svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                </button>
+                                <button class="btn-icon" title="Copy Value" onclick="copyValue('${escapedValue}')">
+                                    <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                </button>
+                            </div>
+                        `;
+                        list.appendChild(item);
+                    });
+
+                    // Highlight active sidebar item
+                    document.querySelectorAll('.tree-item').forEach(el => {
+                        el.classList.remove('active');
+                        if (el.textContent.includes(path.split('/').pop())) {
+                            el.classList.add('active');
+                        }
+                    });
+                }
+            } catch (error) {
+                showToast('Error loading secret details', 'error');
+            }
+        }
+
+        // --- Actions ---
+
+        async function addOrUpdateKey() {
+            const key = document.getElementById('newKey').value.trim();
+            const value = document.getElementById('newValue').value;
+
+            if (!key || !value) {
+                showToast('Please enter both key and value', 'error');
+                return;
+            }
+            if (!currentSecret) return;
+
+            try {
+                const response = await fetch('/api/secrets/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: currentSecret,
+                        mount_point: 'secret',
+                        key: key,
+                        value: value
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(`Key "${key}" updated`);
+                    document.getElementById('newKey').value = '';
+                    document.getElementById('newValue').value = '';
+                    loadSecret(currentSecret);
+                } else {
+                    showToast(data.error || 'Error updating key', 'error');
+                }
+            } catch (error) {
+                showToast('Network error', 'error');
+            }
+        }
+
+        async function createNewSecret() {
+            const path = document.getElementById('newSecretPath').value.trim();
+            const key = document.getElementById('newSecretKey').value.trim();
+            const value = document.getElementById('newSecretValue').value;
+            const mount = document.getElementById('newSecretMount').value.trim() || 'secret';
+
+            if (!path) {
+                showToast('Path is required', 'error');
+                return;
+            }
+
+            const dataPayload = {};
+            if (key && value) dataPayload[key] = value;
+
+            try {
+                const response = await fetch('/api/secrets/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: path,
+                        mount_point: mount,
+                        data: dataPayload
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showToast('Secret created successfully');
+                    closeNewSecretModal();
+                    loadSecrets(); // Refresh root
+                    // Navigate to new secret if possible
+                    setTimeout(() => loadSecret(path), 500);
+                } else {
+                    showToast(result.error || 'Error creating secret', 'error');
+                }
+            } catch (error) {
+                showToast('Error creating secret', 'error');
+            }
+        }
+
+        // --- UI Utilities ---
+
+        function updateBreadcrumbs(path) {
+            const bc = document.getElementById('breadcrumbs');
+            bc.innerHTML = '';
+            
+            // Root
+            const root = document.createElement('span');
+            root.className = 'breadcrumb-item';
+            root.textContent = 'Root';
+            root.onclick = () => loadSecrets('');
+            bc.appendChild(root);
+
+            if (!path) {
+                root.className = 'breadcrumb-current';
+                return;
+            }
+
+            const parts = path.split('/').filter(p => p);
+            let currentPath = '';
+
+            parts.forEach((part, index) => {
+                currentPath += part + (index < parts.length - 1 ? '/' : '');
+                
+                const sep = document.createElement('span');
+                sep.className = 'breadcrumb-separator';
+                sep.textContent = '/';
+                bc.appendChild(sep);
+
+                const item = document.createElement('span');
+                item.textContent = part;
+                
+                if (index === parts.length - 1) {
+                    item.className = 'breadcrumb-current';
+                } else {
+                    item.className = 'breadcrumb-item';
+                    // Closure capture
+                    const p = currentPath; 
+                    item.onclick = () => loadSecrets(p);
+                }
+                bc.appendChild(item);
+            });
+        }
+
+        function toggleValue(btn, key, value) {
+            const el = document.getElementById(`val-${key}`);
+            const icon = btn.querySelector('svg');
+            
+            if (el.classList.contains('value-masked')) {
+                el.textContent = value;
+                el.classList.remove('value-masked');
+                el.classList.add('value-revealed');
+                // Change icon to "eye-off"
+                icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+            } else {
+                el.textContent = '•••••••••••••••';
+                el.classList.remove('value-revealed');
+                el.classList.add('value-masked');
+                // Back to eye
+                icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+            }
+        }
+
+        function copyValue(value) {
+            navigator.clipboard.writeText(value).then(() => {
+                showToast('Copied to clipboard');
+            });
+        }
+
+        function showToast(msg, type = 'success') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const txt = document.getElementById('toastMessage');
+            
+            toast.className = `toast toast-${type} active`;
+            txt.textContent = msg;
+            
+            if (type === 'success') {
+                icon.innerHTML = '<svg class="icon" style="color:var(--success)" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            } else {
+                icon.innerHTML = '<svg class="icon" style="color:var(--danger)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1=\"12\" y1=\"16\" x2=\"12.01\" y2=\"16\"></line></svg>';
+            }
+
+            setTimeout(() => {
+                toast.classList.remove('active');
+            }, 3000);
+        }
+
+        function openNewSecretModal() {
+            document.getElementById('newSecretModal').classList.add('active');
+        }
+
+        function closeNewSecretModal() {
+            document.getElementById('newSecretModal').classList.remove('active');
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Initialize
+        initTheme();
+        loadEnvironment();
+        loadSecrets();
+
+        // Close modal on outside click
+        document.getElementById('newSecretModal').addEventListener('click', function(e) {
+            if (e.target === this) closeNewSecretModal();
+        });
+    </script>
+</body>
+
+</html>

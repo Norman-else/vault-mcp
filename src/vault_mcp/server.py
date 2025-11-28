@@ -26,6 +26,14 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import Web UI (lazy import to avoid circular dependency)
+try:
+    from .web_ui import VaultWebUI
+    WEB_UI_AVAILABLE = True
+except ImportError:
+    WEB_UI_AVAILABLE = False
+    logger.warning("Web UI not available. Install flask and flask-cors to enable.")
+
 
 class VaultMCPServer:
     """MCP Server for Vault operations."""
@@ -96,7 +104,14 @@ class VaultMCPServer:
                 "aws_region": os.getenv("AWS_REGION_PROD", "us-west-2"),
                 "k8s_context": os.getenv("K8S_CONTEXT_PROD", "prod-cluster"),
             },
+            "local": {
+                "vault_addr": os.getenv("VAULT_ADDR_LOCAL", "http://localhost:8200"),
+                "token": os.getenv("VAULT_TOKEN_LOCAL", "root"),
+            },
         }
+
+        # Web UI 配置
+        self.web_ui = None  # Will be initialized when needed
 
     def _init_vault_client(self, token: str, vault_addr: str):
         """初始化 Vault 客户端."""
@@ -559,7 +574,7 @@ class VaultMCPServer:
         """登录到指定环境的 Vault.
 
         Args:
-            environment: 环境名称 (dev/sat/prod)
+            environment: 环境名称 (dev/sat/prod/local)
         """
         if environment not in self.environments:
             return json.dumps(
@@ -571,6 +586,30 @@ class VaultMCPServer:
 
         env_config = self.environments[environment]
 
+        # Local environment login
+        if environment == "local":
+            try:
+                vault_addr = env_config["vault_addr"]
+                token = env_config["token"]
+                self._init_vault_client(token, vault_addr)
+                self.current_env = environment
+                return json.dumps(
+                    {
+                        "success": True,
+                        "message": "Successfully authenticated with LOCAL Vault",
+                        "environment": "local",
+                        "vault_addr": vault_addr,
+                    }
+                )
+            except Exception as e:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "message": f"Failed to authenticate with LOCAL Vault: {str(e)}",
+                    }
+                )
+
+        # AWS IAM login for other environments
         if self._aws_login(env_config):
             self.current_env = environment
             return json.dumps(
@@ -959,6 +998,48 @@ class VaultMCPServer:
         except Exception as e:
             return json.dumps({"success": False, "error": str(e), "path": path})
 
+    async def vault_web_ui_open(self) -> str:
+        """
+        打开 Vault Web UI 进行交互式管理.
+        
+        Returns:
+            JSON string with success status and URL
+        """
+        if not self._ensure_authenticated():
+            return json.dumps({
+                "success": False,
+                "error": "Not authenticated. Please login first."
+            })
+        
+        if not WEB_UI_AVAILABLE:
+            return json.dumps({
+                "success": False,
+                "error": "Web UI not available. Please install flask and flask-cors: pip install flask flask-cors"
+            })
+        
+        try:
+            # Initialize Web UI if not already done
+            if self.web_ui is None:
+                self.web_ui = VaultWebUI(self)
+                self.web_ui.start()
+                logger.info("Web UI server started")
+            
+            # Open browser
+            url = self.web_ui.open_browser()
+            
+            return json.dumps({
+                "success": True,
+                "message": "Web UI opened in browser",
+                "url": url
+            })
+            
+        except Exception as e:
+            logger.error(f"Error opening Web UI: {e}")
+            return json.dumps({
+                "success": False,
+                "error": str(e)
+            })
+
 
 async def main():
     """主函数：启动 MCP 服务器."""
@@ -978,14 +1059,14 @@ async def main():
         return [
             Tool(
                 name="vault_login",
-                description="使用 AWS IAM 认证登录到指定环境的 Vault。请在参数中指定要登录的环境（dev/sat/prod）。",
+                description="使用 AWS IAM 认证登录到指定环境的 Vault。请在参数中指定要登录的环境（dev/sat/prod/local）。",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "environment": {
                             "type": "string",
-                            "enum": ["dev", "sat", "prod"],
-                            "description": "要登录的环境：dev（开发）、sat（测试）、prod（生产）",
+                            "enum": ["dev", "sat", "prod", "local"],
+                            "description": "要登录的环境：dev（开发）、sat（测试）、prod（生产）、local（本地容器）",
                             "default": "dev",
                         }
                     },
@@ -1094,6 +1175,14 @@ async def main():
                     "required": ["path"],
                 },
             ),
+            Tool(
+                name="vault_web_ui_open",
+                description="打开 Vault Web UI 进行交互式管理。支持浏览、创建、编辑 secrets，提供美观的图形界面。",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -1127,6 +1216,8 @@ async def main():
                 result = await vault_server.vault_read(path=arguments.get("path"))
             elif name == "vault_list":
                 result = await vault_server.vault_list(path=arguments.get("path"))
+            elif name == "vault_web_ui_open":
+                result = await vault_server.vault_web_ui_open()
             else:
                 result = json.dumps({"error": f"Unknown tool: {name}"})
 
