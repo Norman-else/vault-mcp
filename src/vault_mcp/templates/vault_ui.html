@@ -2270,6 +2270,9 @@
                     // Update breadcrumbs in top bar
                     updateBreadcrumbs(path);
                     
+                    // Highlight the secret in sidebar
+                    highlightSecretInSidebar(path);
+                    
                     // Build metadata display with version selector
                     let metaHtml = '';
                     const keyCount = Object.keys(data.data).length;
@@ -2826,7 +2829,48 @@
         // Select a search result
         function selectSearchResult(secretPath) {
             closeSearchModal();
-            loadSecret(secretPath);
+            
+            // Extract parent path
+            const parts = secretPath.split('/');
+            const parentPath = parts.slice(0, -1).join('/');
+            
+            // Load the parent path to update sidebar, then load the secret
+            if (parentPath) {
+                loadSecrets(parentPath + '/').then(() => {
+                    loadSecret(secretPath);
+                });
+            } else {
+                // Secret is in root
+                loadSecrets('').then(() => {
+                    loadSecret(secretPath);
+                });
+            }
+        }
+        
+        // Highlight the selected secret in sidebar
+        function highlightSecretInSidebar(secretPath) {
+            // Remove previous active state
+            document.querySelectorAll('.tree-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Find and highlight the current secret
+            // We need to match by the secret name at the end of the path
+            const secretName = secretPath.split('/').filter(p => p).pop();
+            
+            document.querySelectorAll('.tree-item').forEach(item => {
+                // Check if this is a secret (not a folder) and matches our path
+                if (!item.classList.contains('folder')) {
+                    const onclick = item.getAttribute('onclick');
+                    if (onclick) {
+                        // Extract the path from onclick="loadSecret('path')"
+                        const match = onclick.match(/loadSecret\('([^']+)'\)/);
+                        if (match && match[1] === secretPath) {
+                            item.classList.add('active');
+                        }
+                    }
+                }
+            });
         }
         
         // Navigate search results with keyboard
