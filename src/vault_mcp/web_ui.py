@@ -105,6 +105,7 @@ class VaultWebUI:
             try:
                 path = request.args.get('path')
                 mount_point = request.args.get('mount_point', 'secret')
+                version = request.args.get('version')  # Optional version parameter
                 
                 if not path:
                     return jsonify({
@@ -120,10 +121,12 @@ class VaultWebUI:
                 
                 # Read secret
                 try:
-                    response = self.vault_server.vault_client.secrets.kv.v2.read_secret_version(
-                        path=path,
-                        mount_point=mount_point
-                    )
+                    # Build kwargs for version parameter
+                    kwargs = {'path': path, 'mount_point': mount_point}
+                    if version:
+                        kwargs['version'] = int(version)
+                    
+                    response = self.vault_server.vault_client.secrets.kv.v2.read_secret_version(**kwargs)
                     data = response['data']['data']
                     metadata = response['data']['metadata']
                     
@@ -134,7 +137,9 @@ class VaultWebUI:
                         'metadata': {
                             'version': metadata.get('version'),
                             'created_time': metadata.get('created_time'),
-                            'updated_time': metadata.get('updated_time')
+                            'updated_time': metadata.get('updated_time'),
+                            'deleted_time': metadata.get('deleted_time'),
+                            'destroyed': metadata.get('destroyed', False)
                         }
                     })
                 except:
@@ -154,6 +159,69 @@ class VaultWebUI:
                     
             except Exception as e:
                 logger.error(f"Error getting secret: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        @self.app.route('/api/secrets/versions', methods=['GET'])
+        def get_secret_versions():
+            """Get all versions metadata for a secret."""
+            try:
+                path = request.args.get('path')
+                mount_point = request.args.get('mount_point', 'secret')
+                
+                if not path:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Path is required'
+                    }), 400
+                
+                if not self.vault_server._ensure_authenticated():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Not authenticated'
+                    }), 401
+                
+                # Read secret metadata to get all versions
+                try:
+                    response = self.vault_server.vault_client.secrets.kv.v2.read_secret_metadata(
+                        path=path,
+                        mount_point=mount_point
+                    )
+                    
+                    versions_data = response['data']['versions']
+                    current_version = response['data']['current_version']
+                    
+                    # Format versions list
+                    versions = []
+                    for version_num, version_info in versions_data.items():
+                        versions.append({
+                            'version': int(version_num),
+                            'created_time': version_info.get('created_time'),
+                            'deleted_time': version_info.get('deleted_time'),
+                            'destroyed': version_info.get('destroyed', False)
+                        })
+                    
+                    # Sort by version number descending
+                    versions.sort(key=lambda x: x['version'], reverse=True)
+                    
+                    return jsonify({
+                        'success': True,
+                        'path': path,
+                        'current_version': current_version,
+                        'versions': versions
+                    })
+                    
+                except Exception as e:
+                    # KV v1 or error
+                    return jsonify({
+                        'success': False,
+                        'error': 'Version history not available (KV v1 or error)'
+                    }), 400
+                    
+            except Exception as e:
+                logger.error(f"Error getting secret versions: {e}")
                 return jsonify({
                     'success': False,
                     'error': str(e)

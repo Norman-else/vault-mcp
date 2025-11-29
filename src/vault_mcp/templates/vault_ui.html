@@ -344,9 +344,9 @@
         }
 
         .secret-title h1 {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 8px;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 12px;
             color: var(--text-primary);
             display: flex;
             align-items: center;
@@ -368,12 +368,65 @@
             gap: 20px;
             font-size: 13px;
             color: var(--text-muted);
+            align-items: center;
+            flex-wrap: wrap;
         }
         
         .meta-item {
             display: flex;
             align-items: center;
             gap: 6px;
+        }
+        
+        .version-selector {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .version-selector label {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        
+        .version-selector select {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            padding: 0;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: var(--font-ui);
+            font-weight: 600;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            padding-right: 20px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right center;
+        }
+        
+        .version-selector select:hover {
+            color: var(--primary);
+        }
+        
+        .version-selector select:focus {
+            outline: none;
+            color: var(--primary);
+        }
+        
+        .version-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary);
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 4px;
         }
 
         .card {
@@ -533,11 +586,38 @@
             cursor: pointer;
             transition: all 0.2s;
             white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
         .btn-primary:hover {
             background-color: var(--primary-hover);
             transform: translateY(-1px);
+        }
+        
+        .btn-primary:disabled {
+            cursor: not-allowed;
+            opacity: 0.8;
+        }
+        
+        .btn-primary:disabled:hover {
+            transform: none;
+        }
+        
+        /* Loading Spinner */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         /* Empty State */
@@ -825,10 +905,10 @@
                                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                                         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                                     </svg>
-                                    <span id="secretPathTitle">...</span>
+                                    Secret Information
                                 </h1>
                                 <div class="secret-meta" id="secretMeta">
-                                    <!-- Meta info -->
+                                    <!-- Meta info: version, updated time, etc -->
                                 </div>
                             </div>
                         </div>
@@ -904,15 +984,27 @@
                 </svg>
             </button>
             <h2 class="modal-title">Login to Vault</h2>
-            <p style="margin-bottom: 20px; color: var(--text-secondary); font-size: 14px;">
-                Login to <strong id="loginEnvDisplay" style="color: var(--primary);">DEV</strong> environment to continue.
+            <p id="loginDescription" style="margin-bottom: 20px; color: var(--text-secondary); font-size: 14px;">
+                Select an environment and login to continue.
             </p>
-            <input type="hidden" id="loginEnvSelect" value="dev">
+            
+            <!-- Environment Selector (shown when not authenticated) -->
+            <div id="loginEnvSelector" class="form-group" style="margin-bottom: 20px;">
+                <label class="label">Environment</label>
+                <select id="loginEnvSelect" class="input" onchange="updateLoginEnvDisplay()">
+                    <option value="">Select Environment...</option>
+                    <option value="dev">DEV - Development</option>
+                    <option value="sat">SAT - Testing</option>
+                    <option value="prod">PROD - Production</option>
+                    <option value="local">LOCAL - Local Container</option>
+                </select>
+            </div>
+            
             <div id="loginMessage" style="margin-bottom: 16px; color: var(--text-muted); font-size: 14px; display: none;">
                 Authenticating... please wait.
             </div>
             <div class="modal-actions">
-                <button class="btn-primary" onclick="performLogin()" style="width: 100%">Login</button>
+                <button class="btn-primary" id="loginBtn" onclick="performLogin()" style="width: 100%" disabled>Login</button>
             </div>
         </div>
     </div>
@@ -926,6 +1018,8 @@
     <script>
         let currentSecret = null;
         let currentMountPoint = 'secret';
+        let currentVersion = null; // Track selected version
+        let availableVersions = []; // Store available versions
 
         // --- Theme Logic ---
         function initTheme() {
@@ -980,7 +1074,8 @@
                 } else {
                     currentEnv = null;
                     updateEnvButtons();
-                    document.getElementById('loginModal').classList.add('active');
+                    // Show login modal with environment selector
+                    showLoginModalWithEnvSelector();
                 }
             } catch (error) {
                 console.error('Error loading environment:', error);
@@ -1002,16 +1097,23 @@
             // If already on this env, do nothing
             if (env === currentEnv) return;
             
-            // Set login modal and show it
+            // Clear current secret display
+            document.getElementById('secretEditor').style.display = 'none';
+            document.getElementById('emptyState').style.display = 'flex';
+            currentSecret = null;
+            currentVersion = null;
+            availableVersions = [];
+            
+            // Set login modal and show it (switching environments)
             document.getElementById('loginEnvSelect').value = env;
-            document.getElementById('loginEnvDisplay').textContent = env.toUpperCase();
-            showLoginModal();
+            showLoginModalForEnvSwitch(env);
         }
         
         function showLoginModal() {
             const modal = document.getElementById('loginModal');
             const closeBtn = document.getElementById('loginCloseBtn');
             const msg = document.getElementById('loginMessage');
+            const loginBtn = document.getElementById('loginBtn');
             
             // Show close button only if already authenticated
             closeBtn.style.display = currentEnv ? 'block' : 'none';
@@ -1020,6 +1122,64 @@
             msg.style.display = 'none';
             
             modal.classList.add('active');
+        }
+        
+        function showLoginModalWithEnvSelector() {
+            const modal = document.getElementById('loginModal');
+            const closeBtn = document.getElementById('loginCloseBtn');
+            const envSelector = document.getElementById('loginEnvSelector');
+            const description = document.getElementById('loginDescription');
+            const loginBtn = document.getElementById('loginBtn');
+            const msg = document.getElementById('loginMessage');
+            
+            // Not authenticated - show environment selector
+            closeBtn.style.display = 'none';
+            envSelector.style.display = 'block';
+            description.innerHTML = 'Select an environment and login to continue.';
+            
+            // Reset selector
+            document.getElementById('loginEnvSelect').value = '';
+            loginBtn.disabled = true;
+            
+            // Reset message
+            msg.style.display = 'none';
+            
+            modal.classList.add('active');
+        }
+        
+        function showLoginModalForEnvSwitch(env) {
+            const modal = document.getElementById('loginModal');
+            const closeBtn = document.getElementById('loginCloseBtn');
+            const envSelector = document.getElementById('loginEnvSelector');
+            const description = document.getElementById('loginDescription');
+            const loginBtn = document.getElementById('loginBtn');
+            const msg = document.getElementById('loginMessage');
+            
+            // Already authenticated - switching environments
+            closeBtn.style.display = 'block';
+            envSelector.style.display = 'none';
+            description.innerHTML = `Login to <strong style="color: var(--primary);">${env.toUpperCase()}</strong> environment to continue.`;
+            loginBtn.disabled = false;
+            
+            // Reset message
+            msg.style.display = 'none';
+            
+            modal.classList.add('active');
+        }
+        
+        function updateLoginEnvDisplay() {
+            const select = document.getElementById('loginEnvSelect');
+            const loginBtn = document.getElementById('loginBtn');
+            const description = document.getElementById('loginDescription');
+            
+            if (select.value) {
+                loginBtn.disabled = false;
+                const envName = select.options[select.selectedIndex].text.split(' - ')[0];
+                description.innerHTML = `Ready to login to <strong style="color: var(--primary);">${envName}</strong> environment.`;
+            } else {
+                loginBtn.disabled = true;
+                description.innerHTML = 'Select an environment and login to continue.';
+            }
         }
         
         function closeLoginModal() {
@@ -1035,14 +1195,23 @@
 
         async function performLogin() {
             const env = document.getElementById('loginEnvSelect').value;
+            
+            if (!env) {
+                showToast('Please select an environment', 'error');
+                return;
+            }
+            
             const msg = document.getElementById('loginMessage');
-            const btn = document.querySelector('#loginModal .btn-primary');
+            const btn = document.getElementById('loginBtn');
             
             msg.style.display = 'block';
             msg.textContent = `Authenticating with ${env.toUpperCase()}... check your terminal for MFA if needed.`;
             msg.style.color = 'var(--text-muted)';
+            
+            // Add loading state
             btn.disabled = true;
-            btn.style.opacity = '0.7';
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<div class="spinner"></div> Authenticating...';
             
             try {
                 const response = await fetch('/api/login', {
@@ -1056,6 +1225,14 @@
                 if (result.success) {
                     showToast(`Logged in to ${env.toUpperCase()}`);
                     document.getElementById('loginModal').classList.remove('active');
+                    
+                    // Clear current secret display
+                    document.getElementById('secretEditor').style.display = 'none';
+                    document.getElementById('emptyState').style.display = 'flex';
+                    currentSecret = null;
+                    currentVersion = null;
+                    availableVersions = [];
+                    
                     // Update currentEnv immediately to prevent 401 from re-showing modal
                     currentEnv = env;
                     updateEnvButtons();
@@ -1069,9 +1246,11 @@
             } catch (error) {
                 msg.textContent = 'Network error during login';
                 msg.style.color = 'var(--danger)';
+                showToast('Network error during login', 'error');
             } finally {
+                // Restore button state
                 btn.disabled = false;
-                btn.style.opacity = '1';
+                btn.innerHTML = 'Login';
             }
         }
 
@@ -1136,29 +1315,56 @@
             }
         }
 
-        async function loadSecret(path) {
+        async function loadSecret(path, version = null) {
             try {
-                const response = await fetch(`/api/secrets/get?path=${encodeURIComponent(path)}&mount_point=secret`);
+                // Fetch versions first
+                await loadSecretVersions(path);
+                
+                // Build URL with optional version
+                let url = `/api/secrets/get?path=${encodeURIComponent(path)}&mount_point=secret`;
+                if (version) {
+                    url += `&version=${version}`;
+                }
+                
+                const response = await fetch(url);
                 const data = await response.json();
 
                 if (data.success) {
                     currentSecret = path;
+                    currentVersion = version || data.metadata.version;
                     
                     // Switch view
                     document.getElementById('emptyState').style.display = 'none';
                     document.getElementById('secretEditor').style.display = 'block';
                     
-                    // Update Header
-                    document.getElementById('secretPathTitle').textContent = path;
+                    // Update breadcrumbs in top bar
+                    updateBreadcrumbs(path);
                     
+                    // Build metadata display with version selector
                     let metaHtml = '';
-                    if (data.metadata.version) {
-                        metaHtml += `<div class="meta-item"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg> v${data.metadata.version}</div>`;
+                    const keyCount = Object.keys(data.data).length;
+                    metaHtml += `<div class="meta-item"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> ${keyCount} key${keyCount > 1 ? 's' : ''}</div>`;
+                    
+                    // Add version selector if versions available
+                    if (availableVersions.length > 0) {
+                        metaHtml += renderVersionSelector(data.metadata.version);
+                    } else if (data.metadata.version) {
+                        metaHtml += `<div class="meta-item"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg> Version ${data.metadata.version}</div>`;
                     }
+                    
                     if (data.metadata.updated_time) {
                         const date = new Date(data.metadata.updated_time).toLocaleString();
-                        metaHtml += `<div class="meta-item"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> ${date}</div>`;
+                        metaHtml += `<div class="meta-item"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Updated ${date}</div>`;
                     }
+                    
+                    // Show warning if viewing deleted or destroyed version
+                    if (data.metadata.deleted_time && !data.metadata.destroyed) {
+                        metaHtml += `<div class="meta-item" style="color:var(--warning)"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Deleted</div>`;
+                    }
+                    if (data.metadata.destroyed) {
+                        metaHtml += `<div class="meta-item" style="color:var(--danger)"><svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg> Destroyed</div>`;
+                    }
+                    
                     document.getElementById('secretMeta').innerHTML = metaHtml;
 
                     // Render Rows
@@ -1283,23 +1489,81 @@
             }
         }
 
+        // --- Version Management ---
+        
+        async function loadSecretVersions(path) {
+            try {
+                const response = await fetch(`/api/secrets/versions?path=${encodeURIComponent(path)}&mount_point=secret`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    availableVersions = data.versions;
+                } else {
+                    availableVersions = [];
+                }
+            } catch (error) {
+                console.error('Error loading versions:', error);
+                availableVersions = [];
+            }
+        }
+        
+        function renderVersionSelector(currentVer) {
+            if (availableVersions.length === 0) return '';
+            
+            // Find the latest version (highest number)
+            const latestVersion = Math.max(...availableVersions.map(v => v.version));
+            
+            let html = '<div class="meta-item version-selector">';
+            html += '<svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+            html += '<select onchange="switchVersion(this.value)" title="Switch version">';
+            
+            availableVersions.forEach(v => {
+                const selected = v.version === currentVer ? 'selected' : '';
+                const isLatest = v.version === latestVersion;
+                const isDeleted = v.deleted_time && !v.destroyed;
+                const isDestroyed = v.destroyed;
+                
+                let label = `v${v.version}`;
+                if (isLatest) label += ' (Latest)';
+                if (isDeleted) label += ' • Deleted';
+                if (isDestroyed) label += ' • Destroyed';
+                
+                html += `<option value="${v.version}" ${selected}>${label}</option>`;
+            });
+            
+            html += '</select>';
+            html += '</div>';
+            
+            return html;
+        }
+        
+        function switchVersion(version) {
+            if (currentSecret) {
+                loadSecret(currentSecret, parseInt(version));
+            }
+        }
+        
         // --- UI Utilities ---
 
         function updateBreadcrumbs(path) {
             const bc = document.getElementById('breadcrumbs');
             bc.innerHTML = '';
             
-            // Root
-            const root = document.createElement('span');
-            root.className = 'breadcrumb-item';
-            root.textContent = 'Root';
-            root.onclick = () => loadSecrets('');
-            bc.appendChild(root);
-
+            // Root or path (no environment badge - it's shown on the right)
             if (!path) {
+                const root = document.createElement('span');
                 root.className = 'breadcrumb-current';
+                root.textContent = 'Secrets';
+                bc.appendChild(root);
                 return;
             }
+            
+            // Clickable root
+            const root = document.createElement('span');
+            root.className = 'breadcrumb-item';
+            root.textContent = 'Secrets';
+            root.onclick = () => loadSecrets('');
+            bc.appendChild(root);
 
             const parts = path.split('/').filter(p => p);
             let currentPath = '';
