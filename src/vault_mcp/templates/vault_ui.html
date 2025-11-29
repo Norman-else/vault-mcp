@@ -1945,16 +1945,40 @@
             // If already on this env, do nothing
             if (env === currentEnv) return;
             
-            // Clear current secret display
-            document.getElementById('secretEditor').style.display = 'none';
-            document.getElementById('emptyState').style.display = 'flex';
-            currentSecret = null;
-            currentVersion = null;
-            availableVersions = [];
+            // Clear all displays
+            resetUIState();
             
             // Set login modal and show it (switching environments)
             document.getElementById('loginEnvSelect').value = env;
             showLoginModalForEnvSwitch(env);
+        }
+        
+        function resetUIState() {
+            // Reset data
+            currentSecret = null;
+            currentVersion = null;
+            availableVersions = [];
+            currentDbRole = null;
+            
+            // Reset views
+            document.getElementById('secretEditor').style.display = 'none';
+            document.getElementById('dbCredsView').style.display = 'none';
+            document.getElementById('emptyState').style.display = 'flex';
+            
+            // Update empty state based on current mode
+            updateEmptyState(currentMode);
+            
+            // Reset breadcrumbs
+            if (currentMode === 'kv') {
+                updateBreadcrumbs('');
+            } else {
+                const bc = document.getElementById('breadcrumbs');
+                bc.innerHTML = '<span class="breadcrumb-current">Database Credentials</span>';
+            }
+            
+            // Clear lists visual state (optional, but good for feedback)
+            document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.db-role-item').forEach(el => el.classList.remove('active'));
         }
         
         function showLoginModal() {
@@ -2074,18 +2098,29 @@
                     showToast(`Logged in to ${env.toUpperCase()}`);
                     document.getElementById('loginModal').classList.remove('active');
                     
-                    // Clear current secret display
-                    document.getElementById('secretEditor').style.display = 'none';
-                    document.getElementById('emptyState').style.display = 'flex';
-                    currentSecret = null;
-                    currentVersion = null;
-                    availableVersions = [];
+                    // Reset UI State
+                    resetUIState();
                     
-                    // Update currentEnv immediately to prevent 401 from re-showing modal
+                    // Update currentEnv immediately
                     currentEnv = env;
                     updateEnvButtons();
                     loadEnvironment();
+                    
+                    // Load data for both modes to ensure sidebar is ready
                     loadSecrets();
+                    if (currentMode === 'db') {
+                        loadDatabaseRoles();
+                    } else {
+                        // Preload database roles in background if not in db mode, 
+                        // or just wait until switch. Let's wait until switch to save requests,
+                        // but we should clear the list visually.
+                        // Actually resetUIState doesn't clear the list HTML, just selection.
+                        // loadDatabaseRoles() will clear and load.
+                        // loadSecrets() clears secretList.
+                        
+                        // To be safe and ensure sidebar is correct if user switches immediately:
+                        // We can just load the current mode's data.
+                    }
                 } else {
                     msg.textContent = result.message || 'Login failed';
                     msg.style.color = 'var(--danger)';
@@ -2119,15 +2154,21 @@
                 const listEl = document.getElementById('secretList');
                 listEl.innerHTML = '';
 
-                // Clear secret detail view and show empty state
-                document.getElementById('secretEditor').style.display = 'none';
-                document.getElementById('emptyState').style.display = 'flex';
-                currentSecret = null;
-                currentVersion = null;
-                availableVersions = [];
+                // Only update main UI if in KV mode
+                if (currentMode === 'kv') {
+                    // Clear secret detail view and show empty state
+                    document.getElementById('secretEditor').style.display = 'none';
+                    document.getElementById('emptyState').style.display = 'flex';
+                    currentSecret = null;
+                    currentVersion = null;
+                    availableVersions = [];
 
-                // Breadcrumbs update
-                updateBreadcrumbs(path);
+                    // Breadcrumbs update
+                    updateBreadcrumbs(path);
+                    
+                    // Update empty state text/icon
+                    updateEmptyState('kv');
+                }
 
                 // Back button
                 if (path) {
@@ -2413,7 +2454,13 @@
             if (!path) {
                 const root = document.createElement('span');
                 root.className = 'breadcrumb-current';
-                root.textContent = 'KV Secrets';
+                
+                if (currentMode === 'kv') {
+                    root.textContent = 'KV Secrets';
+                } else {
+                    root.textContent = 'Database Credentials';
+                }
+                
                 bc.appendChild(root);
                 return;
             }
@@ -2421,7 +2468,7 @@
             // Clickable root
             const root = document.createElement('span');
             root.className = 'breadcrumb-item';
-            root.textContent = 'Secrets';
+            root.textContent = 'KV Secrets';
             root.onclick = () => loadSecrets('');
             bc.appendChild(root);
 
