@@ -824,6 +824,272 @@
 
         @keyframes spin { to { transform: rotate(360deg); } }
         
+        /* Search Modal */
+        .search-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 300;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 12vh;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        
+        .search-modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .search-modal {
+            background: var(--bg-card);
+            width: 100%;
+            max-width: 640px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-lg), 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            transform: scale(0.95) translateY(-20px);
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        .search-modal-overlay.active .search-modal {
+            transform: scale(1) translateY(0);
+        }
+        
+        .search-input-wrapper {
+            position: relative;
+            padding: 24px 24px 16px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .search-input-icon {
+            position: absolute;
+            left: 36px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+        
+        .search-input {
+            width: 100%;
+            background: var(--bg-input);
+            border: 2px solid var(--border);
+            color: var(--text-primary);
+            padding: 14px 16px 14px 48px;
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            transition: all 0.2s;
+            font-family: var(--font-ui);
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: var(--bg-card);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+        
+        .search-hints {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 24px;
+            font-size: 12px;
+            color: var(--text-muted);
+            background: var(--bg-hover);
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .search-hints-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .search-hint-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .search-results {
+            max-height: 420px;
+            overflow-y: auto;
+        }
+        
+        .search-result-item {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: start;
+            gap: 12px;
+        }
+        
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .search-result-item:hover {
+            background-color: var(--bg-hover);
+        }
+        
+        .search-result-item.selected {
+            background-color: var(--bg-hover);
+            border-left: 3px solid var(--primary);
+        }
+        
+        .search-result-icon {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            margin-top: 2px;
+            color: var(--primary);
+            opacity: 0.8;
+        }
+        
+        .search-result-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .search-result-path {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            word-break: break-all;
+        }
+        
+        .search-result-path-highlight {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--primary);
+            padding: 1px 3px;
+            border-radius: 3px;
+        }
+        
+        .search-result-keys {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        
+        .search-result-key-badge {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        
+        .search-result-meta {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+        
+        .search-result-match-type {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 6px;
+            background: var(--bg-sidebar);
+            border-radius: 3px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .search-empty {
+            padding: 60px 20px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+        
+        .search-empty-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            color: var(--border-light);
+            opacity: 0.4;
+        }
+        
+        .search-empty-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .search-empty-text {
+            font-size: 14px;
+        }
+        
+        .search-loading {
+            padding: 60px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            color: var(--text-muted);
+        }
+        
+        .search-results-header {
+            padding: 12px 24px;
+            background: var(--bg-sidebar);
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .search-results-count {
+            color: var(--primary);
+        }
+        
+        .search-kbd {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 10px;
+            font-family: var(--font-mono);
+            color: var(--text-secondary);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            font-weight: 600;
+        }
+        
         /* Environment Switcher - Direct buttons */
         .env-switcher {
             display: flex;
@@ -929,11 +1195,20 @@
                     <span class="breadcrumb-current">Root</span>
                 </div>
                 
-                <div class="env-switcher" id="envSwitcher">
-                    <button class="env-btn" data-env="dev" onclick="selectEnv('dev')">DEV</button>
-                    <button class="env-btn" data-env="sat" onclick="selectEnv('sat')">SAT</button>
-                    <button class="env-btn" data-env="prod" onclick="selectEnv('prod')">PROD</button>
-                    <button class="env-btn" data-env="local" onclick="selectEnv('local')">LOCAL</button>
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <button class="btn-icon" onclick="openSearchModal()" title="Search (⌘K / Ctrl+K)">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                    </button>
+                    
+                    <div class="env-switcher" id="envSwitcher">
+                        <button class="env-btn" data-env="dev" onclick="selectEnv('dev')">DEV</button>
+                        <button class="env-btn" data-env="sat" onclick="selectEnv('sat')">SAT</button>
+                        <button class="env-btn" data-env="prod" onclick="selectEnv('prod')">PROD</button>
+                        <button class="env-btn" data-env="local" onclick="selectEnv('local')">LOCAL</button>
+                    </div>
                 </div>
             </header>
 
@@ -1074,6 +1349,58 @@
     <div class="toast" id="toast">
         <div id="toastIcon"></div>
         <div id="toastMessage">Operation successful</div>
+    </div>
+
+    <!-- Search Modal -->
+    <div class="search-modal-overlay" id="searchModal">
+        <div class="search-modal">
+            <div class="search-input-wrapper">
+                <svg class="icon search-input-icon" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    id="searchInput" 
+                    placeholder="Search secrets and keys..."
+                    autocomplete="off"
+                    spellcheck="false">
+            </div>
+            <div class="search-hints">
+                <div class="search-hints-left">
+                    <div class="search-hint-item">
+                        <svg class="icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                        <span>Navigate</span>
+                        <span class="search-kbd">↑↓</span>
+                    </div>
+                    <div class="search-hint-item">
+                        <span>Select</span>
+                        <span class="search-kbd">Enter</span>
+                    </div>
+                    <div class="search-hint-item">
+                        <span>Close</span>
+                        <span class="search-kbd">Esc</span>
+                    </div>
+                </div>
+                <div class="search-hint-item">
+                    <span>Environment:</span>
+                    <span class="search-kbd" id="searchEnvBadge">-</span>
+                </div>
+            </div>
+            <div class="search-results" id="searchResults">
+                <div class="search-empty">
+                    <svg class="icon search-empty-icon" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                    <div class="search-empty-title">Start typing to search</div>
+                    <div class="search-empty-text">Search across all secrets and keys in your current environment</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1755,6 +2082,277 @@
                 input.setAttribute('data-hidden', 'true');
                 input.style.webkitTextSecurity = 'disc';
                 input.style.textSecurity = 'disc';
+            }
+        });
+        
+        // --- Search Modal Functions ---
+        
+        let searchDebounceTimer = null;
+        let selectedSearchIndex = -1;
+        let searchResultsData = [];
+        
+        // Open search modal
+        function openSearchModal() {
+            const modal = document.getElementById('searchModal');
+            const input = document.getElementById('searchInput');
+            const envBadge = document.getElementById('searchEnvBadge');
+            
+            // Update environment badge
+            if (currentEnv) {
+                envBadge.textContent = currentEnv.toUpperCase();
+                envBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                envBadge.style.color = 'var(--success)';
+            } else {
+                envBadge.textContent = 'Not logged in';
+                envBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+                envBadge.style.color = 'var(--danger)';
+            }
+            
+            modal.classList.add('active');
+            // Focus input after animation
+            setTimeout(() => {
+                input.focus();
+            }, 100);
+        }
+        
+        // Close search modal
+        function closeSearchModal() {
+            const modal = document.getElementById('searchModal');
+            const input = document.getElementById('searchInput');
+            const results = document.getElementById('searchResults');
+            
+            modal.classList.remove('active');
+            input.value = '';
+            
+            // Reset to initial state
+            results.innerHTML = `
+                <div class="search-empty">
+                    <svg class="icon search-empty-icon" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                    <div class="search-empty-title">Start typing to search</div>
+                    <div class="search-empty-text">Search across all secrets and keys in your current environment</div>
+                </div>
+            `;
+            
+            selectedSearchIndex = -1;
+            searchResultsData = [];
+        }
+        
+        // Perform search
+        async function performSearch(query) {
+            const resultsEl = document.getElementById('searchResults');
+            
+            if (!query.trim()) {
+                resultsEl.innerHTML = `
+                    <div class="search-empty">
+                        <svg class="icon search-empty-icon" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                        <div class="search-empty-title">Start typing to search</div>
+                        <div class="search-empty-text">Search across all secrets and keys in your current environment</div>
+                    </div>
+                `;
+                searchResultsData = [];
+                selectedSearchIndex = -1;
+                return;
+            }
+            
+            // Show loading
+            resultsEl.innerHTML = `
+                <div class="search-loading">
+                    <div class="spinner"></div>
+                    <div>Searching secrets...</div>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`/api/secrets/search?q=${encodeURIComponent(query)}&mount_point=secret`);
+                const data = await response.json();
+                
+                if (data.success && data.results.length > 0) {
+                    searchResultsData = data.results;
+                    selectedSearchIndex = 0; // Select first item by default
+                    renderSearchResults(data.results, query);
+                } else {
+                    searchResultsData = [];
+                    selectedSearchIndex = -1;
+                    resultsEl.innerHTML = `
+                        <div class="search-empty">
+                            <svg class="icon search-empty-icon" viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            <div class="search-empty-title">No results found</div>
+                            <div class="search-empty-text">Try a different search term or check your spelling</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                resultsEl.innerHTML = `
+                    <div class="search-empty">
+                        <svg class="icon search-empty-icon" viewBox="0 0 24 24" style="color: var(--danger);">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <div class="search-empty-title" style="color: var(--danger);">Search Error</div>
+                        <div class="search-empty-text">An error occurred while searching. Please try again.</div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Highlight search term in text
+        function highlightSearchTerm(text, searchTerm) {
+            if (!searchTerm) return escapeHtml(text);
+            const regex = new RegExp(`(${escapeHtml(searchTerm)})`, 'gi');
+            return escapeHtml(text).replace(regex, '<span class="search-result-path-highlight">$1</span>');
+        }
+        
+        // Render search results
+        function renderSearchResults(results, searchTerm) {
+            const resultsEl = document.getElementById('searchResults');
+            
+            let html = `
+                <div class="search-results-header">
+                    <span><span class="search-results-count">${results.length}</span> ${results.length === 1 ? 'result' : 'results'} found</span>
+                    <span style="font-weight: normal; color: var(--text-muted);">Showing ${results.length > 50 ? 'first 50' : 'all'}</span>
+                </div>
+            `;
+            
+            html += results.map((result, index) => {
+                const selectedClass = index === selectedSearchIndex ? 'selected' : '';
+                
+                // Icon for secret
+                const icon = `
+                    <svg class="icon search-result-icon" viewBox="0 0 24 24">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                `;
+                
+                // Highlight matching text in path
+                const highlightedPath = highlightSearchTerm(result.path, searchTerm);
+                
+                // Keys display
+                let keysHtml = '';
+                if (result.matching_keys && result.matching_keys.length > 0) {
+                    keysHtml = '<div class="search-result-keys">';
+                    keysHtml += '<svg class="icon" style="width: 12px; height: 12px; margin-right: 4px;" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>';
+                    keysHtml += result.matching_keys.slice(0, 5).map(key => 
+                        `<span class="search-result-key-badge">${escapeHtml(key)}</span>`
+                    ).join('');
+                    if (result.matching_keys.length > 5) {
+                        keysHtml += `<span style="color: var(--text-muted); font-size: 11px;">+${result.matching_keys.length - 5} more</span>`;
+                    }
+                    keysHtml += '</div>';
+                }
+                
+                // Match type badge
+                const matchTypeBadge = result.match_type === 'path' 
+                    ? '<span class="search-result-match-type"><svg class="icon" style="width: 10px; height: 10px;" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> Path Match</span>'
+                    : '<span class="search-result-match-type"><svg class="icon" style="width: 10px; height: 10px;" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg> Key Match</span>';
+                
+                return `
+                    <div class="search-result-item ${selectedClass}" data-index="${index}" onclick="selectSearchResult('${escapeHtml(result.path)}')">
+                        ${icon}
+                        <div class="search-result-content">
+                            <div class="search-result-path">${highlightedPath}</div>
+                            ${keysHtml}
+                            <div class="search-result-meta">
+                                ${matchTypeBadge}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            resultsEl.innerHTML = html;
+        }
+        
+        // Select a search result
+        function selectSearchResult(secretPath) {
+            closeSearchModal();
+            loadSecret(secretPath);
+        }
+        
+        // Navigate search results with keyboard
+        function navigateSearchResults(direction) {
+            if (searchResultsData.length === 0) return;
+            
+            if (direction === 'down') {
+                selectedSearchIndex = (selectedSearchIndex + 1) % searchResultsData.length;
+            } else if (direction === 'up') {
+                selectedSearchIndex = selectedSearchIndex <= 0 ? searchResultsData.length - 1 : selectedSearchIndex - 1;
+            }
+            
+            // Re-render to update selection
+            const searchInput = document.getElementById('searchInput');
+            renderSearchResults(searchResultsData, searchInput.value);
+            
+            // Scroll selected item into view
+            const selectedItem = document.querySelector('.search-result-item.selected');
+            if (selectedItem) {
+                selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+        
+        // Handle Enter key in search
+        function handleSearchEnter() {
+            if (selectedSearchIndex >= 0 && searchResultsData[selectedSearchIndex]) {
+                selectSearchResult(searchResultsData[selectedSearchIndex].path);
+            }
+        }
+        
+        // Search input event listener
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            
+            if (searchInput) {
+                // Real-time search with debounce
+                searchInput.addEventListener('input', function(e) {
+                    clearTimeout(searchDebounceTimer);
+                    searchDebounceTimer = setTimeout(() => {
+                        performSearch(e.target.value);
+                    }, 300);
+                });
+                
+                // Keyboard navigation
+                searchInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        navigateSearchResults('down');
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        navigateSearchResults('up');
+                    } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSearchEnter();
+                    } else if (e.key === 'Escape') {
+                        closeSearchModal();
+                    }
+                });
+            }
+        });
+        
+        // Global keyboard shortcut (Cmd+K / Ctrl+K)
+        document.addEventListener('keydown', function(e) {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                openSearchModal();
+            }
+        });
+        
+        // Close search modal on overlay click
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('searchModal');
+            if (e.target === modal) {
+                closeSearchModal();
             }
         });
 

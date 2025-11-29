@@ -342,6 +342,92 @@ class VaultWebUI:
                     'error': str(e)
                 }), 500
         
+        @self.app.route('/api/secrets/search', methods=['GET'])
+        def search_secrets():
+            """Search secrets by path and key name."""
+            try:
+                query = request.args.get('q', '').lower().strip()
+                mount_point = request.args.get('mount_point', 'secret')
+                
+                if not query:
+                    return jsonify({
+                        'success': True,
+                        'results': []
+                    })
+                
+                if not self.vault_server._ensure_authenticated():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Not authenticated'
+                    }), 401
+                
+                results = []
+                
+                def search_recursive(path=''):
+                    """Recursively search through all secrets."""
+                    try:
+                        response = self.vault_server.vault_client.secrets.kv.v2.list_secrets(
+                            path=path,
+                            mount_point=mount_point
+                        )
+                        keys = response['data']['keys']
+                        
+                        for key in keys:
+                            full_path = f"{path}{key}" if path else key
+                            
+                            if key.endswith('/'):
+                                # It's a folder, recurse into it
+                                search_recursive(full_path)
+                            else:
+                                # It's a secret, check if path matches
+                                path_matches = query in full_path.lower()
+                                
+                                # Read the secret to check key names
+                                matching_keys = []
+                                try:
+                                    secret_response = self.vault_server.vault_client.secrets.kv.v2.read_secret_version(
+                                        path=full_path,
+                                        mount_point=mount_point
+                                    )
+                                    secret_data = secret_response['data']['data']
+                                    
+                                    # Check each key name
+                                    for key_name in secret_data.keys():
+                                        if query in key_name.lower():
+                                            matching_keys.append(key_name)
+                                except:
+                                    pass
+                                
+                                # Add to results if path or any key matches
+                                if path_matches or matching_keys:
+                                    results.append({
+                                        'path': full_path,
+                                        'matching_keys': matching_keys,
+                                        'match_type': 'path' if path_matches else 'key'
+                                    })
+                    except:
+                        # Empty path or error, skip
+                        pass
+                
+                # Start recursive search from root
+                search_recursive('')
+                
+                # Limit results to 50
+                results = results[:50]
+                
+                return jsonify({
+                    'success': True,
+                    'results': results,
+                    'query': query
+                })
+                
+            except Exception as e:
+                logger.error(f"Error searching secrets: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
         @self.app.route('/api/environment', methods=['GET'])
         def get_environment():
             """Get current environment info."""
