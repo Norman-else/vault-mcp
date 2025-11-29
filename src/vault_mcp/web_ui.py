@@ -428,6 +428,79 @@ class VaultWebUI:
                     'error': str(e)
                 }), 500
         
+        @self.app.route('/api/database/roles', methods=['GET'])
+        def list_database_roles():
+            """List all database roles."""
+            try:
+                if not self.vault_server._ensure_authenticated():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Not authenticated'
+                    }), 401
+                
+                try:
+                    response = self.vault_server.vault_client.list('database/roles')
+                    roles = response['data']['keys']
+                    
+                    return jsonify({
+                        'success': True,
+                        'roles': roles
+                    })
+                except Exception as e:
+                    # No roles or error
+                    return jsonify({
+                        'success': True,
+                        'roles': []
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Error listing database roles: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        @self.app.route('/api/database/creds/<role_name>', methods=['POST'])
+        def generate_database_creds(role_name):
+            """Generate database credentials for a role."""
+            try:
+                if not self.vault_server._ensure_authenticated():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Not authenticated'
+                    }), 401
+                
+                # Generate credentials by reading from database/creds/role_name
+                response = self.vault_server.vault_client.read(f'database/creds/{role_name}')
+                
+                if not response or 'data' not in response:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Failed to generate credentials'
+                    }), 500
+                
+                data = response['data']
+                
+                # Audit log
+                logger.info(f"Generated database credentials for role: {role_name}")
+                
+                return jsonify({
+                    'success': True,
+                    'role': role_name,
+                    'username': data.get('username'),
+                    'password': data.get('password'),
+                    'lease_id': response.get('lease_id'),
+                    'lease_duration': response.get('lease_duration'),
+                    'renewable': response.get('renewable', False)
+                })
+                
+            except Exception as e:
+                logger.error(f"Error generating database credentials for {role_name}: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
         @self.app.route('/api/environment', methods=['GET'])
         def get_environment():
             """Get current environment info."""

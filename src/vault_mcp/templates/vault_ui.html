@@ -1090,6 +1090,353 @@
             font-weight: 600;
         }
         
+        /* Mode Selector in Sidebar */
+        .mode-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .mode-selector-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            text-align: left;
+        }
+        
+        .mode-selector-btn:hover {
+            background-color: var(--bg-hover);
+            color: var(--text-primary);
+        }
+        
+        .mode-selector-btn.active {
+            background-color: rgba(59, 130, 246, 0.1);
+            color: var(--primary);
+        }
+        
+        .mode-selector-btn .icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+        
+        /* Mode Tabs - KV vs Database Creds */
+        .mode-tabs {
+            display: flex;
+            gap: 8px;
+            padding: 16px 32px 0 32px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .mode-tab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: -1px;
+        }
+        
+        .mode-tab:hover {
+            color: var(--text-primary);
+        }
+        
+        .mode-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        
+        /* Database Roles List */
+        .db-role-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            color: var(--text-secondary);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        
+        .db-role-item:hover {
+            background-color: var(--bg-hover);
+            color: var(--text-primary);
+        }
+        
+        .db-role-item.active {
+            background-color: var(--bg-hover);
+            color: var(--primary);
+            border-left: 3px solid var(--primary);
+        }
+        
+        .db-role-icon {
+            width: 16px;
+            height: 16px;
+            opacity: 0.7;
+        }
+        
+        /* Database Credentials View */
+        .db-creds-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .db-creds-header {
+            margin-bottom: 32px;
+        }
+        
+        .db-creds-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .db-creds-role-name {
+            font-family: var(--font-mono);
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
+            padding: 16px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+            border: 2px solid rgba(59, 130, 246, 0.2);
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .db-creds-role-name::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--primary);
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+        }
+        
+        .db-creds-description {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        
+        .db-generate-section {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .db-generate-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            color: var(--border-light);
+            opacity: 0.4;
+        }
+        
+        .db-generate-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .db-generate-text {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+        
+        .btn-generate {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-generate:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-generate:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .btn-generate:disabled:hover {
+            transform: none;
+        }
+        
+        /* Credentials Display Card */
+        .creds-card {
+            background-color: var(--bg-card);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        
+        .creds-card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-sidebar);
+        }
+        
+        .creds-card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .creds-card-body {
+            padding: 24px;
+        }
+        
+        .creds-field {
+            margin-bottom: 24px;
+        }
+        
+        .creds-field:last-child {
+            margin-bottom: 0;
+        }
+        
+        .creds-field-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .creds-field-value {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--text-primary);
+            background: var(--bg-input);
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            word-break: break-all;
+        }
+        
+        .creds-field-value-masked {
+            letter-spacing: 3px;
+            color: var(--text-muted);
+        }
+        
+        .btn-toggle-visibility {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .btn-toggle-visibility:hover {
+            color: var(--text-primary);
+        }
+        
+        .creds-card-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 12px;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .btn-copy-all {
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-copy-all:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-regenerate {
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 12px 20px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-regenerate:hover {
+            background: var(--bg-hover);
+            border-color: var(--text-muted);
+            transform: translateY(-1px);
+        }
+        
         /* Environment Switcher - Direct buttons */
         .env-switcher {
             display: flex;
@@ -1165,11 +1512,42 @@
                         New Secret
                     </button>
                 </div>
+                
+                <!-- Mode Selector -->
+                <div class="nav-section" style="padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+                    <div class="mode-selector">
+                        <button class="mode-selector-btn active" id="kvModeBtn" onclick="switchMode('kv')">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg>
+                            <span>KV Secrets</span>
+                        </button>
+                        <button class="mode-selector-btn" id="dbModeBtn" onclick="switchMode('db')">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                            </svg>
+                            <span>Database Credentials</span>
+                        </button>
+                    </div>
+                </div>
 
-                <div class="nav-section">
+                <div class="nav-section" id="kvSecretsSection">
                     <div class="nav-title">Secrets Explorer</div>
                     <div class="secret-tree" id="secretList">
                         <!-- Loaded via JS -->
+                        <div style="padding: 20px; display: flex; justify-content: center;">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="nav-section" id="dbRolesSection" style="display: none;">
+                    <div class="nav-title">Database Roles</div>
+                    <div id="dbRolesList">
+                        <!-- Roles loaded via JS -->
                         <div style="padding: 20px; display: flex; justify-content: center;">
                             <div class="spinner"></div>
                         </div>
@@ -1192,7 +1570,7 @@
         <main class="main">
             <header class="top-bar">
                 <div class="breadcrumbs" id="breadcrumbs">
-                    <span class="breadcrumb-current">Welcome</span>
+                    <span class="breadcrumb-current">KV Secrets</span>
                 </div>
                 
                 <div style="display: flex; align-items: center; gap: 16px;">
@@ -1273,6 +1651,13 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Database Credentials View -->
+                <div id="dbCredsView" style="display: none;">
+                    <div class="container db-creds-container" id="dbCredsContent">
+                        <!-- Content loaded via JS -->
                     </div>
                 </div>
             </div>
@@ -1408,6 +1793,81 @@
         let currentMountPoint = 'secret';
         let currentVersion = null; // Track selected version
         let availableVersions = []; // Store available versions
+        
+        // --- Mode Management (KV vs DB Creds) ---
+        let currentMode = 'kv'; // 'kv' or 'db'
+        let currentDbRole = null;
+        
+        function switchMode(mode) {
+            if (mode === currentMode) return;
+            
+            currentMode = mode;
+            
+            // Update sidebar button active states
+            document.getElementById('kvModeBtn').classList.toggle('active', mode === 'kv');
+            document.getElementById('dbModeBtn').classList.toggle('active', mode === 'db');
+            
+            if (mode === 'kv') {
+                // Show KV Secrets UI
+                document.getElementById('kvSecretsSection').style.display = 'block';
+                document.getElementById('dbRolesSection').style.display = 'none';
+                document.getElementById('secretEditor').style.display = currentSecret ? 'block' : 'none';
+                document.getElementById('emptyState').style.display = currentSecret ? 'none' : 'flex';
+                document.getElementById('dbCredsView').style.display = 'none';
+                
+                // Update empty state for KV mode
+                updateEmptyState('kv');
+                
+                // Update breadcrumbs - show secret path if one is selected
+                if (currentSecret) {
+                    updateBreadcrumbs(currentSecret);
+                } else {
+                    updateBreadcrumbs('');
+                }
+            } else {
+                // Show Database Credentials UI
+                document.getElementById('kvSecretsSection').style.display = 'none';
+                document.getElementById('dbRolesSection').style.display = 'block';
+                document.getElementById('secretEditor').style.display = 'none';
+                document.getElementById('emptyState').style.display = currentDbRole ? 'none' : 'flex';
+                document.getElementById('dbCredsView').style.display = currentDbRole ? 'block' : 'none';
+                
+                // Update empty state for DB mode
+                updateEmptyState('db');
+                
+                // Update breadcrumbs for DB mode
+                const bc = document.getElementById('breadcrumbs');
+                if (currentDbRole) {
+                    bc.innerHTML = `
+                        <span class="breadcrumb-item" onclick="switchMode('db'); currentDbRole = null; document.getElementById('emptyState').style.display = 'flex'; document.getElementById('dbCredsView').style.display = 'none'; updateEmptyState('db'); updateBreadcrumbsForDb('');">Database Credentials</span>
+                        <span class="breadcrumb-separator">/</span>
+                        <span class="breadcrumb-current">${escapeHtml(currentDbRole)}</span>
+                    `;
+                } else {
+                    bc.innerHTML = '<span class="breadcrumb-current">Database Credentials</span>';
+                }
+                
+                // Load database roles if not loaded
+                loadDatabaseRoles();
+            }
+        }
+        
+        function updateEmptyState(mode) {
+            const emptyState = document.getElementById('emptyState');
+            const icon = emptyState.querySelector('.empty-icon');
+            const title = emptyState.querySelector('.empty-title');
+            const text = emptyState.querySelector('p');
+            
+            if (mode === 'kv') {
+                icon.innerHTML = '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>';
+                title.textContent = 'Select a Secret';
+                text.textContent = 'Choose a secret from the sidebar or create a new one to get started.';
+            } else {
+                icon.innerHTML = '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>';
+                title.textContent = 'Select a Database Role';
+                text.textContent = 'Choose a database role from the sidebar to generate credentials.';
+            }
+        }
 
         // --- Theme Logic ---
         function initTheme() {
@@ -1725,6 +2185,11 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    // Ensure we are in KV mode
+                    if (currentMode !== 'kv') {
+                        switchMode('kv');
+                    }
+                    
                     currentSecret = path;
                     currentVersion = version || data.metadata.version;
                     
@@ -1948,7 +2413,7 @@
             if (!path) {
                 const root = document.createElement('span');
                 root.className = 'breadcrumb-current';
-                root.textContent = 'Welcome';
+                root.textContent = 'KV Secrets';
                 bc.appendChild(root);
                 return;
             }
@@ -2362,6 +2827,263 @@
                 closeSearchModal();
             }
         });
+        
+        // --- Database Credentials Functions ---
+        
+        async function loadDatabaseRoles() {
+            const listEl = document.getElementById('dbRolesList');
+            
+            try {
+                listEl.innerHTML = '<div style="padding: 20px; display: flex; justify-content: center;"><div class="spinner"></div></div>';
+                
+                const response = await fetch('/api/database/roles');
+                const data = await response.json();
+                
+                if (response.status === 401) {
+                    if (!currentEnv) {
+                        showLoginModal();
+                    }
+                    return;
+                }
+                
+                if (data.success && data.roles && data.roles.length > 0) {
+                    listEl.innerHTML = '';
+                    data.roles.forEach(role => {
+                        const el = document.createElement('div');
+                        el.className = 'db-role-item';
+                        el.innerHTML = `
+                            <svg class="icon db-role-icon" viewBox="0 0 24 24">
+                                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                            </svg>
+                            <span>${escapeHtml(role)}</span>
+                        `;
+                        el.onclick = () => selectDatabaseRole(role);
+                        listEl.appendChild(el);
+                    });
+                } else {
+                    listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px;">No database roles found</div>';
+                }
+            } catch (error) {
+                console.error('Error loading database roles:', error);
+                listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--danger); font-size: 14px;">Error loading roles</div>';
+            }
+        }
+        
+        function selectDatabaseRole(roleName) {
+            currentDbRole = roleName;
+            
+            // Update active state
+            document.querySelectorAll('.db-role-item').forEach(el => {
+                el.classList.remove('active');
+                if (el.textContent.trim() === roleName) {
+                    el.classList.add('active');
+                }
+            });
+            
+            // Show credentials view
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('dbCredsView').style.display = 'block';
+            
+            // Update breadcrumbs
+            const bc = document.getElementById('breadcrumbs');
+            bc.innerHTML = `
+                <span class="breadcrumb-item" onclick="switchMode('db')">Database Credentials</span>
+                <span class="breadcrumb-separator">/</span>
+                <span class="breadcrumb-current">${escapeHtml(roleName)}</span>
+            `;
+            
+            // Show generate credentials UI
+            showGenerateUI(roleName);
+        }
+        
+        function showGenerateUI(roleName) {
+            const content = document.getElementById('dbCredsContent');
+            content.innerHTML = `
+                <div class="db-creds-header">
+                    <div class="db-creds-title">
+                        <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                        </svg>
+                        Database Role
+                    </div>
+                    <div class="db-creds-role-name">${escapeHtml(roleName)}</div>
+                </div>
+                
+                <div class="card">
+                    <div class="db-generate-section">
+                        <svg class="icon db-generate-icon" viewBox="0 0 24 24">
+                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+                        </svg>
+                        <div class="db-generate-title">Generate Credentials</div>
+                        <div class="db-generate-text">
+                            Click the button below to generate new temporary database credentials for this role
+                        </div>
+                        <button class="btn-generate" onclick="generateCredentials('${escapeHtml(roleName)}')">
+                            <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24">
+                                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+                            </svg>
+                            Generate Credentials
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        async function generateCredentials(roleName) {
+            const content = document.getElementById('dbCredsContent');
+            
+            // Show loading
+            content.innerHTML = `
+                <div class="db-creds-header">
+                    <div class="db-creds-title">
+                        <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                        </svg>
+                        Database Role
+                    </div>
+                    <div class="db-creds-role-name">${escapeHtml(roleName)}</div>
+                </div>
+                
+                <div class="card">
+                    <div class="db-generate-section">
+                        <div class="spinner"></div>
+                        <div style="margin-top: 16px; color: var(--text-muted);">Generating credentials...</div>
+                    </div>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`/api/database/creds/${encodeURIComponent(roleName)}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayCredentials(roleName, data);
+                    showToast('Credentials generated successfully');
+                } else {
+                    showGenerateUI(roleName);
+                    showToast(data.error || 'Failed to generate credentials', 'error');
+                }
+            } catch (error) {
+                console.error('Error generating credentials:', error);
+                showGenerateUI(roleName);
+                showToast('Error generating credentials', 'error');
+            }
+        }
+        
+        function displayCredentials(roleName, creds) {
+            const content = document.getElementById('dbCredsContent');
+            content.innerHTML = `
+                <div class="db-creds-header">
+                    <div class="db-creds-title">
+                        <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                        </svg>
+                        Database Role
+                    </div>
+                    <div class="db-creds-role-name">${escapeHtml(roleName)}</div>
+                    <div class="db-creds-description">
+                        Credentials generated successfully. These are temporary credentials that will expire automatically.
+                    </div>
+                </div>
+                
+                <div class="creds-card">
+                    <div class="creds-card-header">
+                        <div class="creds-card-title">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+                            </svg>
+                            Generated Credentials
+                        </div>
+                    </div>
+                    <div class="creds-card-body">
+                        <div class="creds-field">
+                            <div class="creds-field-label">
+                                <span>Username</span>
+                                <button class="btn-toggle-visibility" onclick="toggleCredsVisibility('username')">
+                                    <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                    <span id="username-toggle-text">Show</span>
+                                </button>
+                            </div>
+                            <div class="creds-field-value creds-field-value-masked" id="username-value" data-value="${escapeHtml(creds.username)}">
+                                •••••••••••••••••••••••
+                            </div>
+                        </div>
+                        
+                        <div class="creds-field">
+                            <div class="creds-field-label">
+                                <span>Password</span>
+                                <button class="btn-toggle-visibility" onclick="toggleCredsVisibility('password')">
+                                    <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                    <span id="password-toggle-text">Show</span>
+                                </button>
+                            </div>
+                            <div class="creds-field-value creds-field-value-masked" id="password-value" data-value="${escapeHtml(creds.password)}">
+                                •••••••••••••••••••••••
+                            </div>
+                        </div>
+                    </div>
+                    <div class="creds-card-footer">
+                        <button class="btn-copy-all" onclick="copyAllCredentials('${escapeHtml(creds.username)}', '${escapeHtml(creds.password)}')">
+                            <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            Copy All Credentials
+                        </button>
+                        <button class="btn-regenerate" onclick="generateCredentials('${escapeHtml(roleName)}')">
+                            <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                            Generate New
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function toggleCredsVisibility(field) {
+            const valueEl = document.getElementById(`${field}-value`);
+            const toggleTextEl = document.getElementById(`${field}-toggle-text`);
+            const actualValue = valueEl.getAttribute('data-value');
+            
+            if (valueEl.classList.contains('creds-field-value-masked')) {
+                valueEl.textContent = actualValue;
+                valueEl.classList.remove('creds-field-value-masked');
+                toggleTextEl.textContent = 'Hide';
+            } else {
+                valueEl.textContent = '•••••••••••••••••••••••';
+                valueEl.classList.add('creds-field-value-masked');
+                toggleTextEl.textContent = 'Show';
+            }
+        }
+        
+        function copyAllCredentials(username, password) {
+            const text = `Username: ${username}\nPassword: ${password}`;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('Credentials copied to clipboard');
+            }).catch(() => {
+                showToast('Failed to copy credentials', 'error');
+            });
+        }
 
         // Initialize
         initTheme();
