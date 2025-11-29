@@ -465,7 +465,7 @@
             gap: 20px;
             padding: 20px 24px;
             border-bottom: 1px solid var(--border);
-            align-items: center;
+            align-items: start;
             transition: background 0.2s;
         }
 
@@ -482,7 +482,9 @@
             color: var(--primary);
             font-weight: 500;
             font-size: 14px;
-            word-break: break-all;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            line-height: 1.6;
         }
 
         .value-container {
@@ -490,6 +492,10 @@
             font-family: var(--font-mono);
             font-size: 14px;
             color: var(--text-secondary);
+            word-break: break-all;
+            overflow-wrap: break-word;
+            max-width: 100%;
+            line-height: 1.6;
         }
 
         .value-masked {
@@ -504,6 +510,7 @@
             color: var(--text-primary);
             filter: none;
             letter-spacing: normal;
+            white-space: pre-wrap;
         }
 
         .kv-actions {
@@ -540,7 +547,7 @@
         
         .form-grid {
             display: grid;
-            grid-template-columns: 1fr 2fr auto;
+            grid-template-columns: minmax(200px, 1fr) minmax(300px, 2fr) auto;
             gap: 16px;
             align-items: end;
         }
@@ -548,7 +555,39 @@
         .form-group {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+        }
+        
+        .input-with-toggle {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+        
+        .input-with-toggle input {
+            padding-right: 45px;
+            width: 100%;
+        }
+        
+        .input-toggle-btn {
+            position: absolute;
+            right: 8px;
+            top: 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s;
+        }
+        
+        .input-toggle-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-body);
         }
 
         .label {
@@ -557,6 +596,7 @@
             color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            margin-bottom: 4px;
         }
 
         .input {
@@ -569,6 +609,16 @@
             font-size: 14px;
             transition: all 0.2s;
             width: 100%;
+            height: 42px;
+            box-sizing: border-box;
+        }
+        
+        .textarea-input {
+            height: auto;
+            min-height: 42px;
+            resize: vertical;
+            padding-right: 45px;
+            line-height: 1.5;
         }
 
         .input:focus {
@@ -591,6 +641,8 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
+            height: 42px;
+            box-sizing: border-box;
         }
 
         .btn-primary:hover {
@@ -932,7 +984,15 @@
                                     </div>
                                     <div class="form-group">
                                         <label class="label">Value</label>
-                                        <input type="password" class="input" id="newValue" placeholder="Enter secret value">
+                                        <div class="input-with-toggle">
+                                            <textarea class="input textarea-input" id="newValue" placeholder="Enter secret value" rows="1"></textarea>
+                                            <button type="button" class="input-toggle-btn textarea-toggle-btn" onclick="toggleInputVisibility()" title="Toggle visibility">
+                                                <svg class="icon" id="inputToggleIcon" style="width: 18px; height: 18px;" viewBox="0 0 24 24">
+                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                                    <circle cx="12" cy="12" r="3"></circle>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </div>
                                     <button class="btn-primary" onclick="addOrUpdateKey()">Add / Update</button>
                                 </div>
@@ -1663,6 +1723,40 @@
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
         }
+        
+        function toggleInputVisibility() {
+            const input = document.getElementById('newValue');
+            const icon = document.getElementById('inputToggleIcon');
+            
+            // Use custom attribute to track visibility state
+            const isHidden = input.getAttribute('data-hidden') === 'true';
+            
+            if (isHidden) {
+                // Show the actual value
+                input.setAttribute('data-hidden', 'false');
+                input.style.webkitTextSecurity = 'none';
+                input.style.textSecurity = 'none';
+                // Change to "eye-off" icon
+                icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+            } else {
+                // Hide the value
+                input.setAttribute('data-hidden', 'true');
+                input.style.webkitTextSecurity = 'disc';
+                input.style.textSecurity = 'disc';
+                // Change to "eye" icon
+                icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+            }
+        }
+        
+        // Initialize textarea with hidden state
+        window.addEventListener('load', function() {
+            const input = document.getElementById('newValue');
+            if (input) {
+                input.setAttribute('data-hidden', 'true');
+                input.style.webkitTextSecurity = 'disc';
+                input.style.textSecurity = 'disc';
+            }
+        });
 
         // Initialize
         initTheme();
