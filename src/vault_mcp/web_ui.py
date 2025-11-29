@@ -24,7 +24,10 @@ class VaultWebUI:
             vault_server: VaultMCPServer instance
         """
         self.vault_server = vault_server
-        self.app = Flask(__name__, static_folder=None)
+        # Get the directory where this file is located
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        static_folder = os.path.join(current_dir, 'static')
+        self.app = Flask(__name__, static_folder=static_folder, static_url_path='/static')
         CORS(self.app)  # Enable CORS for API requests
         
         self.is_running = False
@@ -40,6 +43,15 @@ class VaultWebUI:
         def index():
             """Serve the main UI page."""
             return self._get_html_template()
+        
+        @self.app.route('/favicon.ico')
+        def favicon():
+            """Serve the favicon."""
+            return send_from_directory(
+                os.path.join(self.app.root_path, 'static'),
+                'favicon.png',
+                mimetype='image/png'
+            )
         
         @self.app.route('/api/secrets/list', methods=['GET'])
         def list_secrets():
