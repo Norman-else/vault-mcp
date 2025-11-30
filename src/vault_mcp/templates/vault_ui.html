@@ -2862,17 +2862,29 @@
                 const data = await response.json();
                 if (data.success) {
                     showToast(`Key "${key}" added successfully`);
+                    // Re-enable Add Key button before reloading
+                    document.getElementById('addKeyBtn').disabled = false;
                     loadSecret(currentSecret); // Reload entire secret
                 } else {
-                    // Re-enable button on error
+                    // Re-enable button and Add Key button on error
                     btn.disabled = false;
                     btn.textContent = originalText;
+                    document.getElementById('addKeyBtn').disabled = false;
+                    // Restore other rows
+                    document.querySelectorAll('.kv-item').forEach(item => {
+                        item.classList.remove('editing-mode');
+                    });
                     showToast(data.error || 'Error adding key', 'error');
                 }
             } catch (error) {
-                // Re-enable button on network error
+                // Re-enable button and Add Key button on network error
                 btn.disabled = false;
                 btn.textContent = originalText;
+                document.getElementById('addKeyBtn').disabled = false;
+                // Restore other rows
+                document.querySelectorAll('.kv-item').forEach(item => {
+                    item.classList.remove('editing-mode');
+                });
                 showToast('Network error', 'error');
             }
         }
@@ -2910,17 +2922,29 @@
                 const data = await response.json();
                 if (data.success) {
                     showToast(`Key "${key}" updated successfully`);
+                    // Re-enable Add Key button before reloading
+                    document.getElementById('addKeyBtn').disabled = false;
                     loadSecret(currentSecret); // Reload entire secret
                 } else {
-                    // Re-enable button on error
+                    // Re-enable button and Add Key button on error
                     btn.disabled = false;
                     btn.textContent = originalText;
+                    document.getElementById('addKeyBtn').disabled = false;
+                    // Restore other rows
+                    document.querySelectorAll('.kv-item').forEach(item => {
+                        item.classList.remove('editing-mode');
+                    });
                     showToast(data.error || 'Error updating key', 'error');
                 }
             } catch (error) {
-                // Re-enable button on network error
+                // Re-enable button and Add Key button on network error
                 btn.disabled = false;
                 btn.textContent = originalText;
+                document.getElementById('addKeyBtn').disabled = false;
+                // Restore other rows
+                document.querySelectorAll('.kv-item').forEach(item => {
+                    item.classList.remove('editing-mode');
+                });
                 showToast('Network error', 'error');
             }
         }
