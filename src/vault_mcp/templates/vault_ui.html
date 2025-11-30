@@ -2062,6 +2062,10 @@
                 currentSecret = null;
                 currentPath = ''; // Reset to root path
                 
+                // Immediately clear the secrets list to show loading state
+                const secretList = document.getElementById('secretList');
+                secretList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px;">Loading...</div>';
+                
                 // Show KV Secrets UI
                 document.getElementById('kvSecretsSection').style.display = 'block';
                 document.getElementById('dbRolesSection').style.display = 'none';
@@ -2069,19 +2073,14 @@
                 document.getElementById('emptyState').style.display = 'flex';
                 document.getElementById('dbCredsView').style.display = 'none';
                 
-                // Clear secret selection in sidebar
-                document.querySelectorAll('#secretList .tree-item').forEach(item => {
-                    item.classList.remove('selected');
-                });
-                
-                // Reset and reload secrets list from root
-                loadSecrets('');
-                
                 // Update empty state for KV mode
                 updateEmptyState('kv');
                 
                 // Update breadcrumbs - reset to root
                 updateBreadcrumbs('');
+                
+                // Reset and reload secrets list from root (async)
+                loadSecrets('');
             } else {
                 // Clear current selection when switching to DB mode
                 currentDbRole = null;
