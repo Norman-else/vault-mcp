@@ -2942,6 +2942,13 @@
             const input = document.getElementById('searchInput');
             const envBadge = document.getElementById('searchEnvBadge');
             
+            // Update placeholder based on current mode
+            if (currentMode === 'kv') {
+                input.placeholder = 'Search secrets and keys...';
+            } else {
+                input.placeholder = 'Search database roles...';
+            }
+            
             // Update environment badge
             if (currentEnv) {
                 envBadge.textContent = currentEnv.toUpperCase();
