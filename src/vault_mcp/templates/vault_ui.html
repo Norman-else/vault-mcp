@@ -2060,6 +2060,7 @@
             if (mode === 'kv') {
                 // Clear current selection when switching to KV mode
                 currentSecret = null;
+                currentPath = ''; // Reset to root path
                 
                 // Show KV Secrets UI
                 document.getElementById('kvSecretsSection').style.display = 'block';
@@ -2073,27 +2074,11 @@
                     item.classList.remove('selected');
                 });
                 
+                // Reset and reload secrets list from root
+                loadSecrets('');
+                
                 // Update empty state for KV mode
                 updateEmptyState('kv');
-                
-                // Update statistics for KV mode from current secrets list
-                const secretsList = document.getElementById('secretList');
-                const treeItems = secretsList.querySelectorAll('.tree-item');
-                let secretsCount = 0;
-                let foldersCount = 0;
-                
-                treeItems.forEach(item => {
-                    if (item.classList.contains('folder')) {
-                        foldersCount++;
-                    } else if (!item.textContent.includes('.. (Back)')) {
-                        secretsCount++;
-                    }
-                });
-                
-                const totalSecretsEl = document.getElementById('totalSecretsCount');
-                const totalFoldersEl = document.getElementById('totalFoldersCount');
-                if (totalSecretsEl) totalSecretsEl.textContent = secretsCount;
-                if (totalFoldersEl) totalFoldersEl.textContent = foldersCount;
                 
                 // Update breadcrumbs - reset to root
                 updateBreadcrumbs('');
