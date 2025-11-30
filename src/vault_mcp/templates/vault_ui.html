@@ -1417,30 +1417,14 @@
             margin-bottom: 12px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .db-creds-role-name::before {
-            content: '';
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            background: rgba(16, 185, 129, 0.15);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
+            gap: 16px;
         }
         
         .db-creds-role-icon {
-            position: absolute;
-            left: 24px;
-            width: 24px;
-            height: 24px;
+            width: 32px;
+            height: 32px;
             color: var(--success);
+            flex-shrink: 0;
         }
             width: 8px;
             height: 8px;
@@ -3493,12 +3477,12 @@
                         Database Role
                     </div>
                     <div class="db-creds-role-name">
-                        <svg class="icon db-creds-role-icon" viewBox="0 0 24 24">
+                        <svg class="icon db-creds-role-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
                             <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
                             <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
                         </svg>
-                        <span style="margin-left: 52px;">${escapeHtml(roleName)}</span>
+                        <span>${escapeHtml(roleName)}</span>
                     </div>
                 </div>
                 
@@ -3537,12 +3521,12 @@
                         Database Role
                     </div>
                     <div class="db-creds-role-name">
-                        <svg class="icon db-creds-role-icon" viewBox="0 0 24 24">
+                        <svg class="icon db-creds-role-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
                             <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
                             <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
                         </svg>
-                        <span style="margin-left: 52px;">${escapeHtml(roleName)}</span>
+                        <span>${escapeHtml(roleName)}</span>
                     </div>
                 </div>
                 
@@ -3590,12 +3574,12 @@
                         Database Role
                     </div>
                     <div class="db-creds-role-name">
-                        <svg class="icon db-creds-role-icon" viewBox="0 0 24 24">
+                        <svg class="icon db-creds-role-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
                             <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
                             <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
                         </svg>
-                        <span style="margin-left: 52px;">${escapeHtml(roleName)}</span>
+                        <span>${escapeHtml(roleName)}</span>
                     </div>
                     <div class="db-creds-description">
                         Credentials generated successfully. These are temporary credentials that will expire automatically.
