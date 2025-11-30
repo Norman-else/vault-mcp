@@ -3165,39 +3165,6 @@
             
             resultsEl.innerHTML = html;
         }
-                if (result.matching_keys && result.matching_keys.length > 0) {
-                    keysHtml = '<div class="search-result-keys">';
-                    keysHtml += '<svg class="icon" style="width: 12px; height: 12px; margin-right: 4px;" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>';
-                    keysHtml += result.matching_keys.slice(0, 5).map(key => 
-                        `<span class="search-result-key-badge">${escapeHtml(key)}</span>`
-                    ).join('');
-                    if (result.matching_keys.length > 5) {
-                        keysHtml += `<span style="color: var(--text-muted); font-size: 11px;">+${result.matching_keys.length - 5} more</span>`;
-                    }
-                    keysHtml += '</div>';
-                }
-                
-                // Match type badge
-                const matchTypeBadge = result.match_type === 'path' 
-                    ? '<span class="search-result-match-type"><svg class="icon" style="width: 10px; height: 10px;" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> Path Match</span>'
-                    : '<span class="search-result-match-type"><svg class="icon" style="width: 10px; height: 10px;" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg> Key Match</span>';
-                
-                return `
-                    <div class="search-result-item ${selectedClass}" data-index="${index}" onclick="selectSearchResult('${escapeHtml(result.path)}')">
-                        ${icon}
-                        <div class="search-result-content">
-                            <div class="search-result-path">${highlightedPath}</div>
-                            ${keysHtml}
-                            <div class="search-result-meta">
-                                ${matchTypeBadge}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            
-            resultsEl.innerHTML = html;
-        }
         
         // Select a search result
         function selectSearchResult(index) {
