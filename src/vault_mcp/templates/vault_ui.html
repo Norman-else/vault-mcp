@@ -3745,7 +3745,10 @@
             html += `<div class="custom-select-trigger" onclick="toggleVersionDropdown(event)">${currentLabel}</div>`;
             html += '<div class="custom-select-dropdown">';
             
-            availableVersions.forEach(v => {
+            // Only show the most recent 5 versions
+            const recentVersions = availableVersions.slice(0, 5);
+            
+            recentVersions.forEach(v => {
                 const selected = v.version === currentVer ? 'selected' : '';
                 const isLatest = v.version === latestVersion;
                 const isDeleted = v.deleted_time && !v.destroyed;

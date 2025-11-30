@@ -1,6 +1,7 @@
 """Vault Web UI Server - Interactive web interface for managing Vault secrets."""
 
 import os
+import sys
 import json
 import logging
 import threading
@@ -9,8 +10,12 @@ from datetime import datetime
 from typing import Optional
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from werkzeug.serving import make_server
 
 logger = logging.getLogger(__name__)
+
+# Completely suppress werkzeug logs
+logging.getLogger('werkzeug').disabled = True
 
 
 class VaultWebUI:
@@ -609,12 +614,17 @@ class VaultWebUI:
             return
         
         def run_server():
-            self.app.run(
-                host=self.host,
-                port=self.port,
-                debug=False,
-                use_reloader=False
+            # Use make_server instead of app.run() to avoid Flask CLI messages
+            # This completely bypasses Flask's CLI output system
+            server = make_server(
+                self.host,
+                self.port,
+                self.app,
+                threaded=True
             )
+            # Disable werkzeug's request logging
+            server.log = lambda *args, **kwargs: None
+            server.serve_forever()
         
         thread = threading.Thread(target=run_server, daemon=True)
         thread.start()

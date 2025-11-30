@@ -24,25 +24,45 @@ try:
 except ImportError:
     SLACK_AVAILABLE = False
 
-# 设置日志 - 使用 stderr 输出（MCP 协议使用 stdout 通信，不能污染）
-# 在 Windows 上强制使用 UTF-8 编码，避免 Unicode 字符（✓、✗ 等）导致的 UnicodeEncodeError
+# 设置日志 - 双重输出策略
+# 1. 文件日志：记录所有详细日志（INFO 及以上）
+# 2. stderr 日志：只输出 ERROR 级别，避免 MCP 日志中显示过多 [error] 标签
+
+# 在 Windows 上强制使用 UTF-8 编码
 stderr_utf8 = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+
+# 创建日志目录
+log_dir = os.path.join(os.path.expanduser('~'), '.vault-mcp', 'logs')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, f'vault-mcp-{datetime.now().strftime("%Y%m%d")}.log')
+
+# 文件处理器 - 记录所有 INFO 及以上的日志
+file_handler = logging.FileHandler(log_file, encoding='utf-8')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+# stderr 处理器 - 只输出 ERROR 级别，让 MCP 日志保持干净
+stderr_handler = logging.StreamHandler(stderr_utf8)
+stderr_handler.setLevel(logging.ERROR)
+stderr_handler.setFormatter(logging.Formatter('[%(name)s] %(levelname)s: %(message)s'))
+
+# 配置根日志记录器
 logging.basicConfig(
     level=logging.INFO,
-    # 简化格式：移除时间戳（Cursor 已经添加），只保留模块名和消息
-    format='[%(name)s] %(message)s',
-    handlers=[logging.StreamHandler(stderr_utf8)]
+    handlers=[file_handler, stderr_handler]
 )
 logger = logging.getLogger(__name__)
 
-# 减少第三方库的日志输出，避免 MCP 日志中显示过多 [error] 标签
-# 只显示 WARNING 及以上级别的日志
-logging.getLogger('werkzeug').setLevel(logging.WARNING)  # Flask HTTP 服务器
-logging.getLogger('mcp.server').setLevel(logging.WARNING)  # MCP 服务器内部日志
-logging.getLogger('mcp.server.lowlevel').setLevel(logging.WARNING)  # MCP 低级别日志
-logging.getLogger('urllib3').setLevel(logging.WARNING)  # HTTP 请求库
-logging.getLogger('boto3').setLevel(logging.WARNING)  # AWS SDK
-logging.getLogger('botocore').setLevel(logging.WARNING)  # AWS SDK 核心
+# 启动时记录日志位置
+logger.info(f"Vault MCP Server starting... Logs: {log_file}")
+
+# 减少第三方库的详细日志
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+logging.getLogger('mcp.server').setLevel(logging.WARNING)
+logging.getLogger('mcp.server.lowlevel').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('boto3').setLevel(logging.WARNING)
+logging.getLogger('botocore').setLevel(logging.WARNING)
 
 # Import Web UI (lazy import to avoid circular dependency)
 try:
