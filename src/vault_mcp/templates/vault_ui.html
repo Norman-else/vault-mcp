@@ -1868,7 +1868,7 @@
                 const bc = document.getElementById('breadcrumbs');
                 if (currentDbRole) {
                     bc.innerHTML = `
-                        <span class="breadcrumb-item" onclick="switchMode('db'); currentDbRole = null; document.getElementById('emptyState').style.display = 'flex'; document.getElementById('dbCredsView').style.display = 'none'; updateEmptyState('db'); updateBreadcrumbsForDb('');">Database Credentials</span>
+                        <span class="breadcrumb-item" onclick="backToDatabaseList()">Database Credentials</span>
                         <span class="breadcrumb-separator">/</span>
                         <span class="breadcrumb-current">${escapeHtml(currentDbRole)}</span>
                     `;
@@ -2991,6 +2991,27 @@
             }
         }
         
+        function backToDatabaseList() {
+            // Reset current role
+            currentDbRole = null;
+            
+            // Clear active state from all role items
+            document.querySelectorAll('.db-role-item').forEach(el => {
+                el.classList.remove('active');
+            });
+            
+            // Hide credentials view and show empty state
+            document.getElementById('dbCredsView').style.display = 'none';
+            document.getElementById('emptyState').style.display = 'flex';
+            
+            // Update empty state for database mode
+            updateEmptyState('db');
+            
+            // Update breadcrumbs
+            const bc = document.getElementById('breadcrumbs');
+            bc.innerHTML = '<span class="breadcrumb-current">Database Credentials</span>';
+        }
+        
         function selectDatabaseRole(roleName) {
             currentDbRole = roleName;
             
@@ -3009,7 +3030,7 @@
             // Update breadcrumbs
             const bc = document.getElementById('breadcrumbs');
             bc.innerHTML = `
-                <span class="breadcrumb-item" onclick="switchMode('db')">Database Credentials</span>
+                <span class="breadcrumb-item" onclick="backToDatabaseList()">Database Credentials</span>
                 <span class="breadcrumb-separator">/</span>
                 <span class="breadcrumb-current">${escapeHtml(roleName)}</span>
             `;
