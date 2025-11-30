@@ -2058,12 +2058,20 @@
             document.getElementById('dbModeBtn').classList.toggle('active', mode === 'db');
             
             if (mode === 'kv') {
+                // Clear current selection when switching to KV mode
+                currentSecret = null;
+                
                 // Show KV Secrets UI
                 document.getElementById('kvSecretsSection').style.display = 'block';
                 document.getElementById('dbRolesSection').style.display = 'none';
-                document.getElementById('secretEditor').style.display = currentSecret ? 'block' : 'none';
-                document.getElementById('emptyState').style.display = currentSecret ? 'none' : 'flex';
+                document.getElementById('secretEditor').style.display = 'none';
+                document.getElementById('emptyState').style.display = 'flex';
                 document.getElementById('dbCredsView').style.display = 'none';
+                
+                // Clear secret selection in sidebar
+                document.querySelectorAll('#secretList .tree-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
                 
                 // Update empty state for KV mode
                 updateEmptyState('kv');
@@ -2087,19 +2095,23 @@
                 if (totalSecretsEl) totalSecretsEl.textContent = secretsCount;
                 if (totalFoldersEl) totalFoldersEl.textContent = foldersCount;
                 
-                // Update breadcrumbs - show secret path if one is selected
-                if (currentSecret) {
-                    updateBreadcrumbs(currentSecret);
-                } else {
-                    updateBreadcrumbs('');
-                }
+                // Update breadcrumbs - reset to root
+                updateBreadcrumbs('');
             } else {
+                // Clear current selection when switching to DB mode
+                currentDbRole = null;
+                
                 // Show Database Credentials UI
                 document.getElementById('kvSecretsSection').style.display = 'none';
                 document.getElementById('dbRolesSection').style.display = 'block';
                 document.getElementById('secretEditor').style.display = 'none';
-                document.getElementById('emptyState').style.display = currentDbRole ? 'none' : 'flex';
-                document.getElementById('dbCredsView').style.display = currentDbRole ? 'block' : 'none';
+                document.getElementById('emptyState').style.display = 'flex';
+                document.getElementById('dbCredsView').style.display = 'none';
+                
+                // Clear role selection in sidebar
+                document.querySelectorAll('#dbRolesList .db-role-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
                 
                 // Update empty state for DB mode
                 updateEmptyState('db');
@@ -2112,17 +2124,9 @@
                     rolesCountEl.textContent = roleItems.length;
                 }
                 
-                // Update breadcrumbs for DB mode
+                // Update breadcrumbs for DB mode - reset to root
                 const bc = document.getElementById('breadcrumbs');
-                if (currentDbRole) {
-                    bc.innerHTML = `
-                        <span class="breadcrumb-item" onclick="backToDatabaseList()">Database Credentials</span>
-                        <span class="breadcrumb-separator">/</span>
-                        <span class="breadcrumb-current">${escapeHtml(currentDbRole)}</span>
-                    `;
-                } else {
-                    bc.innerHTML = '<span class="breadcrumb-current">Database Credentials</span>';
-                }
+                bc.innerHTML = '<span class="breadcrumb-current">Database Credentials</span>';
                 
                 // Load database roles if not loaded
                 loadDatabaseRoles();
