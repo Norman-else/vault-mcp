@@ -2159,9 +2159,36 @@
                 title.textContent = 'Select a Secret';
                 description.textContent = 'Choose a secret from the sidebar or create a new one to get started. Your secrets are securely stored in Vault.';
                 
-                // Show actions and stats
+                // Recreate actions for KV mode
                 actions.style.display = 'flex';
+                actions.innerHTML = `
+                    <button class="empty-action-btn" onclick="document.getElementById('newSecretBtn')?.click()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 5v14M5 12h14"></path>
+                        </svg>
+                        Create Secret
+                    </button>
+                    <button class="empty-action-btn" onclick="openSearchModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                        Search Secrets
+                    </button>
+                `;
+                
+                // Recreate stats for KV mode
                 stats.style.display = 'flex';
+                stats.innerHTML = `
+                    <div class="empty-stat">
+                        <span class="empty-stat-value" id="totalSecretsCount">-</span>
+                        <span class="empty-stat-label">Total Secrets</span>
+                    </div>
+                    <div class="empty-stat">
+                        <span class="empty-stat-value" id="totalFoldersCount">-</span>
+                        <span class="empty-stat-label">Folders</span>
+                    </div>
+                `;
                 
                 // Update stats (will be populated by loadSecrets)
             } else {
