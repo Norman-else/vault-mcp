@@ -612,6 +612,7 @@
             flex-direction: column;
             gap: 2px;
             border-bottom: 1px solid var(--border);
+            position: relative;
         }
         
         .env-custom-select-option:last-child {
@@ -627,11 +628,30 @@
             color: var(--primary);
         }
         
+        /* Current environment styling */
+        .env-custom-select-option.current {
+            background: rgba(16, 185, 129, 0.1);
+            cursor: not-allowed;
+            position: relative;
+        }
+        
+        .env-custom-select-option.current .env-custom-select-option-value {
+            color: var(--success);
+        }
+        
+        .env-custom-select-option.current .env-custom-select-option-label {
+            color: var(--success);
+            opacity: 0.7;
+        }
+        
         .env-custom-select-option-value {
             font-weight: 600;
             text-transform: uppercase;
             font-size: 13px;
             letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         
         .env-custom-select-option-label {
@@ -642,6 +662,19 @@
         .env-custom-select-option.selected .env-custom-select-option-label {
             color: var(--primary);
             opacity: 0.8;
+        }
+        
+        .env-current-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
         
         .version-badge {
@@ -1935,47 +1968,74 @@
             transform: translateY(-1px);
         }
         
-        /* Environment Switcher - Direct buttons */
+        /* Environment Switcher - Single button with current env display */
         .env-switcher {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
         }
         
-        .env-btn {
-            padding: 6px 14px;
+        .current-env-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
             border-radius: 20px;
+            background-color: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .current-env-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .current-env-label {
             font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            color: var(--success);
+        }
+        
+        .btn-switch-env {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
             border: 1px solid var(--border);
-            background: transparent;
-            color: var(--text-muted);
-        }
-        
-        .env-btn:hover {
-            background-color: var(--bg-hover);
+            background: var(--bg-card);
             color: var(--text-primary);
-            border-color: var(--text-muted);
         }
         
-        .env-btn.active {
-            background-color: rgba(16, 185, 129, 0.15);
-            color: var(--success);
-            border-color: rgba(16, 185, 129, 0.3);
+        .btn-switch-env:hover {
+            background-color: var(--bg-hover);
+            border-color: var(--primary);
+            color: var(--primary);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         
-        .env-btn.active::before {
-            content: '';
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background-color: var(--success);
-            margin-right: 6px;
+        .btn-switch-env:active {
+            transform: translateY(0);
+        }
+        
+        .btn-switch-env .icon {
+            width: 16px;
+            height: 16px;
         }
 
         /* Responsive */
@@ -2079,11 +2139,20 @@
                         </svg>
                     </button>
                     
-                    <div class="env-switcher" id="envSwitcher">
-                        <button class="env-btn" data-env="dev" onclick="selectEnv('dev')">DEV</button>
-                        <button class="env-btn" data-env="sat" onclick="selectEnv('sat')">SAT</button>
-                        <button class="env-btn" data-env="prod" onclick="selectEnv('prod')">PROD</button>
-                        <button class="env-btn" data-env="local" onclick="selectEnv('local')">LOCAL</button>
+                    <div class="env-switcher">
+                        <div class="current-env-display" id="currentEnvDisplay">
+                            <div class="current-env-dot"></div>
+                            <span class="current-env-label" id="currentEnvLabel">Loading...</span>
+                        </div>
+                        
+                        <button class="btn-switch-env" onclick="openEnvSwitchModal()">
+                            <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                            Switch Environment
+                        </button>
                     </div>
                 </div>
             </header>
@@ -2112,7 +2181,7 @@
                         <div class="empty-description">Choose a secret from the sidebar or create a new one to get started. Your secrets are securely stored in Vault.</div>
                         
                         <div class="empty-actions">
-                            <button class="empty-action-btn" onclick="document.getElementById('newSecretBtn')?.click()">
+                            <button class="empty-action-btn" onclick="openNewSecretModal()">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M12 5v14M5 12h14"></path>
                                 </svg>
@@ -2214,6 +2283,70 @@
             <div class="modal-actions">
                 <button class="btn-secondary" onclick="closeNewSecretModal()">Cancel</button>
                 <button class="btn-primary" onclick="createNewSecret()">Create Secret</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Environment Switch Modal -->
+    <div class="modal-overlay" id="envSwitchModal">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="modal-close-btn" onclick="closeEnvSwitchModal()">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <h2 class="modal-title">Switch Environment</h2>
+            <p style="margin-bottom: 20px; color: var(--text-secondary); font-size: 14px;">
+                Select an environment to switch to. You will need to re-authenticate.
+            </p>
+            
+            <div class="form-group" style="margin-bottom: 20px;" id="switchEnvSelector">
+                <label class="label">SELECT ENVIRONMENT</label>
+                <div class="env-custom-select" id="switchEnvCustomSelect">
+                    <div class="env-custom-select-trigger placeholder" onclick="toggleSwitchEnvDropdown(event)">
+                        Select Environment...
+                    </div>
+                    <div class="env-custom-select-dropdown">
+                        <div class="env-custom-select-option" data-value="dev" onclick="selectSwitchEnvironment('dev', event)">
+                            <span class="env-custom-select-option-value">
+                                DEV
+                                <span class="env-current-badge" style="display: none;">Current</span>
+                            </span>
+                            <span class="env-custom-select-option-label">Development</span>
+                        </div>
+                        <div class="env-custom-select-option" data-value="sat" onclick="selectSwitchEnvironment('sat', event)">
+                            <span class="env-custom-select-option-value">
+                                SAT
+                                <span class="env-current-badge" style="display: none;">Current</span>
+                            </span>
+                            <span class="env-custom-select-option-label">Testing</span>
+                        </div>
+                        <div class="env-custom-select-option" data-value="prod" onclick="selectSwitchEnvironment('prod', event)">
+                            <span class="env-custom-select-option-value">
+                                PROD
+                                <span class="env-current-badge" style="display: none;">Current</span>
+                            </span>
+                            <span class="env-custom-select-option-label">Production</span>
+                        </div>
+                        <div class="env-custom-select-option" data-value="local" onclick="selectSwitchEnvironment('local', event)">
+                            <span class="env-custom-select-option-value">
+                                LOCAL
+                                <span class="env-current-badge" style="display: none;">Current</span>
+                            </span>
+                            <span class="env-custom-select-option-label">Local Container</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="switchEnvMessage" style="margin-bottom: 16px; color: var(--text-muted); font-size: 14px; display: none;">
+                Authenticating... please wait.
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-secondary" id="cancelSwitchEnvBtn" onclick="closeEnvSwitchModal()">Cancel</button>
+                <button class="btn-primary" id="confirmSwitchEnvBtn" onclick="confirmSwitchEnvironment()" disabled>Switch & Login</button>
             </div>
         </div>
     </div>
@@ -2425,7 +2558,7 @@
                 // Recreate actions for KV mode
                 actions.style.display = 'flex';
                 actions.innerHTML = `
-                    <button class="empty-action-btn" onclick="document.getElementById('newSecretBtn')?.click()">
+                    <button class="empty-action-btn" onclick="openNewSecretModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 5v14M5 12h14"></path>
                         </svg>
@@ -2541,11 +2674,11 @@
                 
                 if (data.success && data.authenticated && data.environment) {
                     currentEnv = data.environment;
-                    updateEnvButtons();
+                    updateEnvDisplay();
                     document.getElementById('loginModal').classList.remove('active');
                 } else {
                     currentEnv = null;
-                    updateEnvButtons();
+                    updateEnvDisplay();
                     // Show login modal with environment selector
                     showLoginModalWithEnvSelector();
                 }
@@ -2554,15 +2687,23 @@
             }
         }
         
-        function updateEnvButtons() {
-            document.querySelectorAll('.env-btn').forEach(btn => {
-                const env = btn.getAttribute('data-env');
-                if (env === currentEnv) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
+        function updateEnvDisplay() {
+            const currentEnvLabel = document.getElementById('currentEnvLabel');
+            const currentEnvDisplay = document.getElementById('currentEnvDisplay');
+            
+            if (currentEnv) {
+                const envLabels = {
+                    'dev': 'DEV',
+                    'sat': 'SAT',
+                    'prod': 'PROD',
+                    'local': 'LOCAL'
+                };
+                currentEnvLabel.textContent = envLabels[currentEnv] || currentEnv.toUpperCase();
+                currentEnvDisplay.style.display = 'flex';
+            } else {
+                currentEnvLabel.textContent = 'Not Connected';
+                currentEnvDisplay.style.display = 'flex';
+            }
         }
         
         function selectEnv(env) {
@@ -2747,6 +2888,209 @@
             }
         });
         
+        // --- Environment Switch Modal Functions ---
+        
+        let selectedSwitchEnv = '';
+        
+        function openEnvSwitchModal() {
+            const modal = document.getElementById('envSwitchModal');
+            const msg = document.getElementById('switchEnvMessage');
+            const confirmBtn = document.getElementById('confirmSwitchEnvBtn');
+            const cancelBtn = document.getElementById('cancelSwitchEnvBtn');
+            const selector = document.getElementById('switchEnvSelector');
+            
+            modal.classList.add('active');
+            
+            // Reset all states
+            selectedSwitchEnv = '';
+            msg.style.display = 'none';
+            msg.textContent = '';
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = 'Switch & Login';
+            cancelBtn.disabled = false;
+            selector.style.opacity = '1';
+            selector.style.pointerEvents = 'auto';
+            
+            // Reset dropdown
+            const trigger = document.querySelector('#switchEnvCustomSelect .env-custom-select-trigger');
+            if (trigger) {
+                trigger.textContent = 'Select Environment...';
+                trigger.classList.add('placeholder');
+            }
+            
+            document.querySelectorAll('#switchEnvCustomSelect .env-custom-select-option').forEach(option => {
+                option.classList.remove('selected');
+                option.classList.remove('current');
+                
+                // Find the current badge in this option
+                const currentBadge = option.querySelector('.env-current-badge');
+                
+                // Mark and disable current environment
+                if (option.dataset.value === currentEnv) {
+                    option.classList.add('current');
+                    option.style.opacity = '1';
+                    option.style.pointerEvents = 'none';
+                    
+                    // Show "Current" badge
+                    if (currentBadge) {
+                        currentBadge.style.display = 'inline-flex';
+                    }
+                } else {
+                    option.style.opacity = '1';
+                    option.style.pointerEvents = 'auto';
+                    
+                    // Hide "Current" badge
+                    if (currentBadge) {
+                        currentBadge.style.display = 'none';
+                    }
+                }
+            });
+        }
+        
+        function closeEnvSwitchModal() {
+            const modal = document.getElementById('envSwitchModal');
+            modal.classList.remove('active');
+        }
+        
+        function toggleSwitchEnvDropdown(event) {
+            if (event) event.stopPropagation();
+            const customSelect = document.getElementById('switchEnvCustomSelect');
+            if (customSelect) {
+                customSelect.classList.toggle('open');
+            }
+        }
+        
+        function selectSwitchEnvironment(env, event) {
+            if (event) event.stopPropagation();
+            
+            // Don't allow selecting current environment
+            if (env === currentEnv) {
+                return;
+            }
+            
+            selectedSwitchEnv = env;
+            
+            const envLabels = {
+                'dev': 'DEV - Development',
+                'sat': 'SAT - Testing',
+                'prod': 'PROD - Production',
+                'local': 'LOCAL - Local Container'
+            };
+            
+            // Update trigger text
+            const trigger = document.querySelector('#switchEnvCustomSelect .env-custom-select-trigger');
+            if (trigger) {
+                trigger.textContent = envLabels[env] || env.toUpperCase();
+                trigger.classList.remove('placeholder');
+            }
+            
+            // Update selected state
+            document.querySelectorAll('#switchEnvCustomSelect .env-custom-select-option').forEach(option => {
+                option.classList.remove('selected');
+                if (option.dataset.value === env) {
+                    option.classList.add('selected');
+                }
+            });
+            
+            // Close dropdown
+            const customSelect = document.getElementById('switchEnvCustomSelect');
+            if (customSelect) {
+                customSelect.classList.remove('open');
+            }
+            
+            // Enable confirm button
+            document.getElementById('confirmSwitchEnvBtn').disabled = false;
+        }
+        
+        async function confirmSwitchEnvironment() {
+            if (!selectedSwitchEnv) {
+                return;
+            }
+            
+            const env = selectedSwitchEnv;
+            const msg = document.getElementById('switchEnvMessage');
+            const confirmBtn = document.getElementById('confirmSwitchEnvBtn');
+            const cancelBtn = document.getElementById('cancelSwitchEnvBtn');
+            const selector = document.getElementById('switchEnvSelector');
+            
+            // Show loading state
+            msg.style.display = 'block';
+            msg.textContent = `Authenticating with ${env.toUpperCase()}... check your terminal for MFA if needed.`;
+            msg.style.color = 'var(--text-muted)';
+            
+            // Disable buttons and hide selector
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            selector.style.opacity = '0.5';
+            selector.style.pointerEvents = 'none';
+            
+            // Update button text
+            const originalText = confirmBtn.innerHTML;
+            confirmBtn.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 8px; justify-content: center;"><span class="spinner"></span><span>Authenticating...</span></span>';
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ environment: env })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(`Logged in to ${env.toUpperCase()}`);
+                    closeEnvSwitchModal();
+                    
+                    // Reset UI State
+                    resetUIState();
+                    
+                    // Update currentEnv immediately
+                    currentEnv = env;
+                    updateEnvDisplay();
+                    loadEnvironment();
+                    
+                    // Load data for both modes to ensure sidebar is ready
+                    loadSecrets();
+                    if (currentMode === 'db') {
+                        loadDatabaseRoles();
+                    }
+                } else {
+                    msg.style.color = 'var(--danger)';
+                    msg.textContent = result.error || 'Authentication failed';
+                    
+                    // Re-enable buttons
+                    confirmBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    confirmBtn.innerHTML = originalText;
+                    selector.style.opacity = '1';
+                    selector.style.pointerEvents = 'auto';
+                    
+                    showToast(result.error || 'Login failed', 'error');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                msg.style.color = 'var(--danger)';
+                msg.textContent = 'Network error. Please try again.';
+                
+                // Re-enable buttons
+                confirmBtn.disabled = false;
+                cancelBtn.disabled = false;
+                confirmBtn.innerHTML = originalText;
+                selector.style.opacity = '1';
+                selector.style.pointerEvents = 'auto';
+                
+                showToast('Login request failed', 'error');
+            }
+        }
+        
+        // Close switch env dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const customSelect = document.getElementById('switchEnvCustomSelect');
+            if (customSelect && !customSelect.contains(event.target)) {
+                customSelect.classList.remove('open');
+            }
+        });
+        
         function closeLoginModal() {
             document.getElementById('loginModal').classList.remove('active');
         }
@@ -2796,7 +3140,7 @@
                     
                     // Update currentEnv immediately
                     currentEnv = env;
-                    updateEnvButtons();
+                    updateEnvDisplay();
                     loadEnvironment();
                     
                     // Load data for both modes to ensure sidebar is ready
