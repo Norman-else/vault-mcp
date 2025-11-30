@@ -2132,17 +2132,8 @@
                 title.textContent = 'Select a Database Role';
                 description.textContent = 'Choose a database role from the sidebar to generate temporary credentials. Credentials are dynamically generated with TTL.';
                 
-                // Update actions for DB mode
-                actions.style.display = 'flex';
-                actions.innerHTML = `
-                    <button class="empty-action-btn" onclick="openSearchModal()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <path d="m21 21-4.35-4.35"></path>
-                        </svg>
-                        Search Roles
-                    </button>
-                `;
+                // Hide actions in DB mode (no actions available)
+                actions.style.display = 'none';
                 
                 // Show stats for DB mode
                 stats.style.display = 'flex';
