@@ -661,12 +661,20 @@
         
         /* Loading Spinner */
         .spinner {
+            display: inline-block;
             width: 16px;
             height: 16px;
             border: 2px solid rgba(255, 255, 255, 0.3);
             border-top-color: white;
             border-radius: 50%;
             animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+        }
+        
+        /* Spinner in button - ensure it's always visible */
+        .btn-primary .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-top-color: white;
         }
         
         @keyframes spin {
@@ -2112,7 +2120,7 @@
             // Add loading state
             btn.disabled = true;
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<div class="spinner"></div> Authenticating...';
+            btn.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 8px; justify-content: center;"><span class="spinner"></span><span>Authenticating...</span></span>';
             
             try {
                 const response = await fetch('/api/login', {
