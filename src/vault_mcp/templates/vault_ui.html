@@ -690,6 +690,14 @@
             height: 60vh;
             text-align: center;
             color: var(--text-muted);
+            padding: 40px;
+        }
+
+        .empty-illustration {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin-bottom: 32px;
         }
 
         .empty-icon {
@@ -698,6 +706,172 @@
             margin-bottom: 24px;
             color: var(--border-light);
             stroke-width: 1.5;
+        }
+        
+        /* Animated illustration container */
+        .illustration-container {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin-bottom: 32px;
+        }
+        
+        .illustration-bg-circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%);
+            animation: pulse-circle 3s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-circle {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.3; }
+        }
+        
+        .illustration-lock {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            color: var(--primary);
+            filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.2));
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translate(-50%, -50%) translateY(0px); }
+            50% { transform: translate(-50%, -50%) translateY(-10px); }
+        }
+        
+        .illustration-dots {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--primary);
+            opacity: 0.3;
+        }
+        
+        .dot-1 {
+            top: 20%;
+            left: 15%;
+            animation: dot-float 3s ease-in-out infinite;
+        }
+        
+        .dot-2 {
+            top: 30%;
+            right: 20%;
+            animation: dot-float 3s ease-in-out infinite 0.5s;
+        }
+        
+        .dot-3 {
+            bottom: 25%;
+            left: 20%;
+            animation: dot-float 3s ease-in-out infinite 1s;
+        }
+        
+        .dot-4 {
+            bottom: 20%;
+            right: 15%;
+            animation: dot-float 3s ease-in-out infinite 1.5s;
+        }
+        
+        @keyframes dot-float {
+            0%, 100% { transform: translateY(0px); opacity: 0.3; }
+            50% { transform: translateY(-15px); opacity: 0.6; }
+        }
+        
+        .empty-content {
+            max-width: 400px;
+        }
+        
+        .empty-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+        
+        .empty-description {
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+        
+        .empty-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .empty-action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .empty-action-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .empty-action-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+        
+        .empty-stats {
+            display: flex;
+            gap: 24px;
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            justify-content: center;
+        }
+        
+        .empty-stat {
+            text-align: center;
+        }
+        
+        .empty-stat-value {
+            display: block;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+        
+        .empty-stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .empty-title {
@@ -1630,12 +1804,53 @@
             <div class="content-area">
                 <!-- Empty State -->
                 <div class="empty-state" id="emptyState">
-                    <svg class="icon empty-icon" viewBox="0 0 24 24">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                    </svg>
-                    <div class="empty-title">Select a Secret</div>
-                    <p>Choose a secret from the sidebar or create a new one to get started.</p>
+                    <!-- Animated Illustration -->
+                    <div class="illustration-container">
+                        <div class="illustration-bg-circle"></div>
+                        <svg class="illustration-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <div class="illustration-dots">
+                            <div class="dot dot-1"></div>
+                            <div class="dot dot-2"></div>
+                            <div class="dot dot-3"></div>
+                            <div class="dot dot-4"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Content -->
+                    <div class="empty-content">
+                        <div class="empty-title">Select a Secret</div>
+                        <div class="empty-description">Choose a secret from the sidebar or create a new one to get started. Your secrets are securely stored in Vault.</div>
+                        
+                        <div class="empty-actions">
+                            <button class="empty-action-btn" onclick="document.getElementById('newSecretBtn')?.click()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 5v14M5 12h14"></path>
+                                </svg>
+                                Create Secret
+                            </button>
+                            <button class="empty-action-btn" onclick="openSearchModal()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.35-4.35"></path>
+                                </svg>
+                                Search Secrets
+                            </button>
+                        </div>
+                        
+                        <div class="empty-stats" id="emptyStats">
+                            <div class="empty-stat">
+                                <span class="empty-stat-value" id="totalSecretsCount">-</span>
+                                <span class="empty-stat-label">Total Secrets</span>
+                            </div>
+                            <div class="empty-stat">
+                                <span class="empty-stat-value" id="totalFoldersCount">-</span>
+                                <span class="empty-stat-label">Folders</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Secret Detail -->
@@ -1891,18 +2106,35 @@
         
         function updateEmptyState(mode) {
             const emptyState = document.getElementById('emptyState');
-            const icon = emptyState.querySelector('.empty-icon');
+            const illustration = emptyState.querySelector('.illustration-lock');
             const title = emptyState.querySelector('.empty-title');
-            const text = emptyState.querySelector('p');
+            const description = emptyState.querySelector('.empty-description');
+            const actions = emptyState.querySelector('.empty-actions');
+            const stats = emptyState.querySelector('.empty-stats');
             
             if (mode === 'kv') {
-                icon.innerHTML = '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>';
+                // Update illustration
+                illustration.innerHTML = '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>';
+                
+                // Update content
                 title.textContent = 'Select a Secret';
-                text.textContent = 'Choose a secret from the sidebar or create a new one to get started.';
+                description.textContent = 'Choose a secret from the sidebar or create a new one to get started. Your secrets are securely stored in Vault.';
+                
+                // Show actions and stats
+                actions.style.display = 'flex';
+                stats.style.display = 'flex';
+                
+                // Update stats (will be populated by loadSecrets)
             } else {
-                icon.innerHTML = '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>';
+                // Database mode
+                illustration.innerHTML = '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>';
+                
                 title.textContent = 'Select a Database Role';
-                text.textContent = 'Choose a database role from the sidebar to generate credentials.';
+                description.textContent = 'Choose a database role from the sidebar to generate temporary credentials. Credentials are dynamically generated with TTL.';
+                
+                // Hide actions in DB mode (different workflow)
+                actions.style.display = 'none';
+                stats.style.display = 'none';
             }
         }
 
@@ -2174,6 +2406,19 @@
             }
         }
 
+        // Update statistics in empty state
+        function updateStatistics(secrets) {
+            const totalCount = document.getElementById('totalSecretsCount');
+            const foldersCount = document.getElementById('totalFoldersCount');
+            
+            if (!totalCount || !foldersCount) return;
+            
+            const secretsOnly = secrets.filter(s => s.type === 'secret').length;
+            const folders = secrets.filter(s => s.type === 'folder').length;
+            
+            totalCount.textContent = secretsOnly;
+            foldersCount.textContent = folders;
+        }
 
         async function loadSecrets(path = '') {
             try {
@@ -2223,6 +2468,9 @@
                 }
 
                 if (data.success && data.secrets.length > 0) {
+                    // Update statistics
+                    updateStatistics(data.secrets);
+                    
                     data.secrets.forEach(secret => {
                         const el = document.createElement('div');
                         el.className = `tree-item ${secret.type === 'folder' ? 'folder' : ''}`;
