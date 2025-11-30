@@ -1231,13 +1231,16 @@
             align-items: center;
             justify-content: center;
             opacity: 0;
+            visibility: hidden;
             pointer-events: none;
-            transition: opacity 0.3s ease;
+            transition: opacity 0.3s ease, visibility 0s 0.3s;
         }
 
         .modal-overlay.active {
             opacity: 1;
+            visibility: visible;
             pointer-events: auto;
+            transition: opacity 0.3s ease, visibility 0s 0s;
         }
 
         .modal-content {
@@ -2299,7 +2302,7 @@
     </div>
 
     <!-- Environment Switch Modal -->
-    <div class="modal-overlay" id="envSwitchModal">
+    <div class="modal-overlay" id="envSwitchModal" onclick="closeEnvSwitchModalOnOverlay(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <button class="modal-close-btn" onclick="closeEnvSwitchModal()">
                 <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
@@ -2891,14 +2894,6 @@
             }
         }
         
-        // Close environment dropdown when clicking outside
-        document.addEventListener('click', function(event) {
-            const customSelect = document.getElementById('envCustomSelect');
-            if (customSelect && !customSelect.contains(event.target)) {
-                customSelect.classList.remove('open');
-            }
-        });
-        
         // --- Environment Switch Modal Functions ---
         
         let selectedSwitchEnv = '';
@@ -2961,6 +2956,13 @@
         function closeEnvSwitchModal() {
             const modal = document.getElementById('envSwitchModal');
             modal.classList.remove('active');
+        }
+        
+        function closeEnvSwitchModalOnOverlay(event) {
+            // Only close if clicking on the overlay itself (not the content)
+            if (event.target === event.currentTarget) {
+                closeEnvSwitchModal();
+            }
         }
         
         function toggleSwitchEnvDropdown(event) {
@@ -3094,13 +3096,6 @@
             }
         }
         
-        // Close switch env dropdown when clicking outside
-        document.addEventListener('click', function(event) {
-            const customSelect = document.getElementById('switchEnvCustomSelect');
-            if (customSelect && !customSelect.contains(event.target)) {
-                customSelect.classList.remove('open');
-            }
-        });
         
         function closeLoginModal() {
             document.getElementById('loginModal').classList.remove('active');
@@ -3787,13 +3782,6 @@
             }
         }
         
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function(event) {
-            const customSelect = document.getElementById('versionCustomSelect');
-            if (customSelect && !customSelect.contains(event.target)) {
-                customSelect.classList.remove('open');
-            }
-        });
         
         function switchVersion(version) {
             if (currentSecret) {
@@ -4290,13 +4278,6 @@
             }
         });
         
-        // Close search modal on overlay click
-        document.addEventListener('click', function(e) {
-            const modal = document.getElementById('searchModal');
-            if (e.target === modal) {
-                closeSearchModal();
-            }
-        });
         
         // --- Database Credentials Functions ---
         
@@ -4570,6 +4551,29 @@
         // Close modal on outside click
         document.getElementById('newSecretModal').addEventListener('click', function(e) {
             if (e.target === this) closeNewSecretModal();
+        });
+        
+        // Unified global click handler for dropdowns and modals
+        document.addEventListener('click', function(event) {
+            // Close all custom dropdowns when clicking outside
+            const dropdowns = [
+                'envCustomSelect',
+                'switchEnvCustomSelect',
+                'versionCustomSelect'
+            ];
+            
+            dropdowns.forEach(id => {
+                const dropdown = document.getElementById(id);
+                if (dropdown && !dropdown.contains(event.target)) {
+                    dropdown.classList.remove('open');
+                }
+            });
+            
+            // Close search modal when clicking on overlay
+            const searchModal = document.getElementById('searchModal');
+            if (searchModal && event.target === searchModal) {
+                closeSearchModal();
+            }
         });
     </script>
 </body>
