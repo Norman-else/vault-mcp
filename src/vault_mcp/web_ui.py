@@ -460,6 +460,62 @@ class VaultWebUI:
                     'error': str(e)
                 }), 500
         
+        @self.app.route('/api/database/roles/search', methods=['GET'])
+        def search_database_roles():
+            """Search database roles by name."""
+            try:
+                query = request.args.get('q', '').lower().strip()
+                
+                if not query:
+                    return jsonify({
+                        'success': True,
+                        'results': []
+                    })
+                
+                if not self.vault_server._ensure_authenticated():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Not authenticated'
+                    }), 401
+                
+                try:
+                    # List all database roles
+                    response = self.vault_server.vault_client.list('database/roles')
+                    roles = response['data']['keys']
+                    
+                    # Filter roles that match the query
+                    results = []
+                    for role in roles:
+                        if query in role.lower():
+                            results.append({
+                                'name': role,
+                                'type': 'database_role',
+                                'match_type': 'name'
+                            })
+                    
+                    # Limit results to 50
+                    results = results[:50]
+                    
+                    return jsonify({
+                        'success': True,
+                        'results': results,
+                        'query': query
+                    })
+                    
+                except Exception as e:
+                    # No roles or error
+                    return jsonify({
+                        'success': True,
+                        'results': []
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Error searching database roles: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
         @self.app.route('/api/database/creds/<role_name>', methods=['POST'])
         def generate_database_creds(role_name):
             """Generate database credentials for a role."""
