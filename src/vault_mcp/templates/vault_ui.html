@@ -2082,6 +2082,25 @@
                 // Update empty state for KV mode
                 updateEmptyState('kv');
                 
+                // Update statistics for KV mode from current secrets list
+                const secretsList = document.getElementById('secretList');
+                const treeItems = secretsList.querySelectorAll('.tree-item');
+                let secretsCount = 0;
+                let foldersCount = 0;
+                
+                treeItems.forEach(item => {
+                    if (item.classList.contains('folder')) {
+                        foldersCount++;
+                    } else if (!item.textContent.includes('.. (Back)')) {
+                        secretsCount++;
+                    }
+                });
+                
+                const totalSecretsEl = document.getElementById('totalSecretsCount');
+                const totalFoldersEl = document.getElementById('totalFoldersCount');
+                if (totalSecretsEl) totalSecretsEl.textContent = secretsCount;
+                if (totalFoldersEl) totalFoldersEl.textContent = foldersCount;
+                
                 // Update breadcrumbs - show secret path if one is selected
                 if (currentSecret) {
                     updateBreadcrumbs(currentSecret);
@@ -2098,6 +2117,14 @@
                 
                 // Update empty state for DB mode
                 updateEmptyState('db');
+                
+                // Update statistics for DB mode from current roles list
+                const rolesList = document.getElementById('dbRolesList');
+                const roleItems = rolesList.querySelectorAll('.db-role-item');
+                const rolesCountEl = document.getElementById('totalRolesCount');
+                if (rolesCountEl) {
+                    rolesCountEl.textContent = roleItems.length;
+                }
                 
                 // Update breadcrumbs for DB mode
                 const bc = document.getElementById('breadcrumbs');
