@@ -383,6 +383,7 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            position: relative;
         }
         
         .version-selector label {
@@ -391,31 +392,256 @@
             font-weight: 500;
         }
         
-        .version-selector select {
+        /* Custom dropdown trigger */
+        .custom-select {
+            position: relative;
+            display: inline-block;
+            min-width: 120px;
+        }
+        
+        .custom-select-trigger {
             background: transparent;
             border: none;
             color: var(--text-primary);
-            padding: 0;
+            padding: 4px 24px 4px 4px;
             font-size: 13px;
             cursor: pointer;
             font-family: var(--font-ui);
             font-weight: 600;
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            padding-right: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.2s;
+            position: relative;
+            white-space: nowrap;
+        }
+        
+        .custom-select-trigger:hover {
+            color: var(--primary);
+        }
+        
+        .custom-select-trigger::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 12px;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
             background-repeat: no-repeat;
-            background-position: right center;
+            background-position: center;
+            transition: transform 0.2s;
         }
         
-        .version-selector select:hover {
+        .custom-select.open .custom-select-trigger::after {
+            transform: translateY(-50%) rotate(180deg);
+        }
+        
+        /* Custom dropdown menu */
+        .custom-select-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-lg);
+            min-width: 180px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+        }
+        
+        .custom-select.open .custom-select-dropdown {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .custom-select-option {
+            padding: 10px 14px;
+            font-size: 13px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .custom-select-option:last-child {
+            border-bottom: none;
+        }
+        
+        .custom-select-option:hover {
+            background: var(--bg-hover);
             color: var(--primary);
         }
         
-        .version-selector select:focus {
-            outline: none;
+        .custom-select-option.selected {
+            background: rgba(59, 130, 246, 0.1);
             color: var(--primary);
+            font-weight: 600;
+        }
+        
+        .custom-select-option.selected::before {
+            content: '✓';
+            font-weight: bold;
+            margin-left: -4px;
+        }
+        
+        .custom-select-option-label {
+            flex: 1;
+        }
+        
+        .custom-select-option-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .custom-select-option-badge.latest {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+        }
+        
+        .custom-select-option-badge.deleted {
+            background: rgba(251, 146, 60, 0.1);
+            color: var(--warning);
+        }
+        
+        .custom-select-option-badge.destroyed {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+        
+        /* Environment selector in login modal */
+        .env-custom-select {
+            position: relative;
+            display: block;
+            width: 100%;
+        }
+        
+        .env-custom-select-trigger {
+            width: 100%;
+            background-color: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 40px 10px 14px;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: var(--font-ui);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            transition: all 0.2s;
+            position: relative;
+            min-height: 44px;
+        }
+        
+        .env-custom-select-trigger.placeholder {
+            color: var(--text-muted);
+        }
+        
+        .env-custom-select-trigger:hover {
+            border-color: var(--primary);
+        }
+        
+        .env-custom-select-trigger::after {
+            content: '';
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 14px;
+            height: 14px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: center;
+            transition: transform 0.2s;
+        }
+        
+        .env-custom-select.open .env-custom-select-trigger::after {
+            transform: translateY(-50%) rotate(180deg);
+        }
+        
+        .env-custom-select.open .env-custom-select-trigger {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        /* Environment dropdown menu */
+        .env-custom-select-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-lg);
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+        }
+        
+        .env-custom-select.open .env-custom-select-dropdown {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .env-custom-select-option {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .env-custom-select-option:last-child {
+            border-bottom: none;
+        }
+        
+        .env-custom-select-option:hover {
+            background: var(--bg-hover);
+        }
+        
+        .env-custom-select-option.selected {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary);
+        }
+        
+        .env-custom-select-option-value {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+        }
+        
+        .env-custom-select-option-label {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        .env-custom-select-option.selected .env-custom-select-option-label {
+            color: var(--primary);
+            opacity: 0.8;
         }
         
         .version-badge {
@@ -2008,14 +2234,30 @@
             
             <!-- Environment Selector (shown when not authenticated) -->
             <div id="loginEnvSelector" class="form-group" style="margin-bottom: 20px;">
-                <label class="label">Environment</label>
-                <select id="loginEnvSelect" class="input" onchange="updateLoginEnvDisplay()">
-                    <option value="">Select Environment...</option>
-                    <option value="dev">DEV - Development</option>
-                    <option value="sat">SAT - Testing</option>
-                    <option value="prod">PROD - Production</option>
-                    <option value="local">LOCAL - Local Container</option>
-                </select>
+                <label class="label">ENVIRONMENT</label>
+                <div class="env-custom-select" id="envCustomSelect">
+                    <div class="env-custom-select-trigger placeholder" onclick="toggleEnvDropdown(event)">
+                        Select Environment...
+                    </div>
+                    <div class="env-custom-select-dropdown">
+                        <div class="env-custom-select-option" data-value="dev" onclick="selectEnvironment('dev', event)">
+                            <span class="env-custom-select-option-value">DEV</span>
+                            <span class="env-custom-select-option-label">Development</span>
+                        </div>
+                        <div class="env-custom-select-option" data-value="sat" onclick="selectEnvironment('sat', event)">
+                            <span class="env-custom-select-option-value">SAT</span>
+                            <span class="env-custom-select-option-label">Testing</span>
+                        </div>
+                        <div class="env-custom-select-option" data-value="prod" onclick="selectEnvironment('prod', event)">
+                            <span class="env-custom-select-option-value">PROD</span>
+                            <span class="env-custom-select-option-label">Production</span>
+                        </div>
+                        <div class="env-custom-select-option" data-value="local" onclick="selectEnvironment('local', event)">
+                            <span class="env-custom-select-option-value">LOCAL</span>
+                            <span class="env-custom-select-option-label">Local Container</span>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div id="loginMessage" style="margin-bottom: 16px; color: var(--text-muted); font-size: 14px; display: none;">
@@ -2331,7 +2573,7 @@
             resetUIState();
             
             // Set login modal and show it (switching environments)
-            document.getElementById('loginEnvSelect').value = env;
+            selectedLoginEnv = env;
             showLoginModalForEnvSwitch(env);
         }
         
@@ -2392,7 +2634,15 @@
             description.innerHTML = 'Select an environment and login to continue.';
             
             // Reset selector
-            document.getElementById('loginEnvSelect').value = '';
+            selectedLoginEnv = '';
+            const trigger = document.querySelector('.env-custom-select-trigger');
+            if (trigger) {
+                trigger.textContent = 'Select Environment...';
+                trigger.classList.add('placeholder');
+            }
+            document.querySelectorAll('.env-custom-select-option').forEach(option => {
+                option.classList.remove('selected');
+            });
             loginBtn.disabled = true;
             
             // Reset message
@@ -2421,20 +2671,81 @@
             modal.classList.add('active');
         }
         
+        // Store selected environment
+        let selectedLoginEnv = '';
+        
+        function toggleEnvDropdown(event) {
+            if (event) event.stopPropagation();
+            const customSelect = document.getElementById('envCustomSelect');
+            if (customSelect) {
+                customSelect.classList.toggle('open');
+            }
+        }
+        
+        function selectEnvironment(env, event) {
+            if (event) event.stopPropagation();
+            
+            selectedLoginEnv = env;
+            
+            const envLabels = {
+                'dev': 'DEV - Development',
+                'sat': 'SAT - Testing',
+                'prod': 'PROD - Production',
+                'local': 'LOCAL - Local Container'
+            };
+            
+            // Update trigger text
+            const trigger = document.querySelector('.env-custom-select-trigger');
+            if (trigger) {
+                trigger.textContent = envLabels[env] || env.toUpperCase();
+                trigger.classList.remove('placeholder');
+            }
+            
+            // Update selected state
+            document.querySelectorAll('.env-custom-select-option').forEach(option => {
+                option.classList.remove('selected');
+                if (option.dataset.value === env) {
+                    option.classList.add('selected');
+                }
+            });
+            
+            // Close dropdown
+            const customSelect = document.getElementById('envCustomSelect');
+            if (customSelect) {
+                customSelect.classList.remove('open');
+            }
+            
+            // Update UI
+            updateLoginEnvDisplay();
+        }
+        
         function updateLoginEnvDisplay() {
-            const select = document.getElementById('loginEnvSelect');
             const loginBtn = document.getElementById('loginBtn');
             const description = document.getElementById('loginDescription');
             
-            if (select.value) {
+            if (selectedLoginEnv) {
                 loginBtn.disabled = false;
-                const envName = select.options[select.selectedIndex].text.split(' - ')[0];
+                const envLabels = {
+                    'dev': 'DEV',
+                    'sat': 'SAT',
+                    'prod': 'PROD',
+                    'local': 'LOCAL'
+                };
+                const envName = envLabels[selectedLoginEnv] || selectedLoginEnv.toUpperCase();
                 description.innerHTML = `Ready to login to <strong style="color: var(--primary);">${envName}</strong> environment.`;
             } else {
                 loginBtn.disabled = true;
                 description.innerHTML = 'Select an environment and login to continue.';
             }
         }
+        
+        // Close environment dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const customSelect = document.getElementById('envCustomSelect');
+            if (customSelect && !customSelect.contains(event.target)) {
+                customSelect.classList.remove('open');
+            }
+        });
         
         function closeLoginModal() {
             document.getElementById('loginModal').classList.remove('active');
@@ -2448,7 +2759,7 @@
         }
 
         async function performLogin() {
-            const env = document.getElementById('loginEnvSelect').value;
+            const env = selectedLoginEnv;
             
             if (!env) {
                 showToast('Please select an environment', 'error');
@@ -3067,9 +3378,22 @@
             // Find the latest version (highest number)
             const latestVersion = Math.max(...availableVersions.map(v => v.version));
             
+            // Find current version info
+            const currentVersionInfo = availableVersions.find(v => v.version === currentVer);
+            const currentIsLatest = currentVer === latestVersion;
+            const currentIsDeleted = currentVersionInfo?.deleted_time && !currentVersionInfo?.destroyed;
+            const currentIsDestroyed = currentVersionInfo?.destroyed;
+            
+            let currentLabel = `v${currentVer}`;
+            if (currentIsLatest) currentLabel += ' (Latest)';
+            if (currentIsDeleted) currentLabel += ' • Deleted';
+            if (currentIsDestroyed) currentLabel += ' • Destroyed';
+            
             let html = '<div class="meta-item version-selector">';
             html += '<svg class="icon" style="width:14px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
-            html += '<select onchange="switchVersion(this.value)" title="Switch version">';
+            html += '<div class="custom-select" id="versionCustomSelect">';
+            html += `<div class="custom-select-trigger" onclick="toggleVersionDropdown(event)">${currentLabel}</div>`;
+            html += '<div class="custom-select-dropdown">';
             
             availableVersions.forEach(v => {
                 const selected = v.version === currentVer ? 'selected' : '';
@@ -3077,22 +3401,53 @@
                 const isDeleted = v.deleted_time && !v.destroyed;
                 const isDestroyed = v.destroyed;
                 
-                let label = `v${v.version}`;
-                if (isLatest) label += ' (Latest)';
-                if (isDeleted) label += ' • Deleted';
-                if (isDestroyed) label += ' • Destroyed';
+                html += `<div class="custom-select-option ${selected}" onclick="event.stopPropagation(); switchVersion(${v.version})">`;
+                html += `<span class="custom-select-option-label">v${v.version}</span>`;
                 
-                html += `<option value="${v.version}" ${selected}>${label}</option>`;
+                if (isLatest) {
+                    html += '<span class="custom-select-option-badge latest">Latest</span>';
+                }
+                if (isDeleted) {
+                    html += '<span class="custom-select-option-badge deleted">Deleted</span>';
+                }
+                if (isDestroyed) {
+                    html += '<span class="custom-select-option-badge destroyed">Destroyed</span>';
+                }
+                
+                html += '</div>';
             });
             
-            html += '</select>';
+            html += '</div>';
+            html += '</div>';
             html += '</div>';
             
             return html;
         }
         
+        function toggleVersionDropdown(event) {
+            if (event) event.stopPropagation();
+            const customSelect = document.getElementById('versionCustomSelect');
+            if (customSelect) {
+                customSelect.classList.toggle('open');
+            }
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const customSelect = document.getElementById('versionCustomSelect');
+            if (customSelect && !customSelect.contains(event.target)) {
+                customSelect.classList.remove('open');
+            }
+        });
+        
         function switchVersion(version) {
             if (currentSecret) {
+                // Close dropdown
+                const customSelect = document.getElementById('versionCustomSelect');
+                if (customSelect) {
+                    customSelect.classList.remove('open');
+                }
+                // Load the selected version
                 loadSecret(currentSecret, parseInt(version));
             }
         }
