@@ -3372,6 +3372,14 @@
             // Update empty state for database mode
             updateEmptyState('db');
             
+            // Update statistics from current roles list
+            const rolesList = document.getElementById('dbRolesList');
+            const roleItems = rolesList.querySelectorAll('.db-role-item');
+            const rolesCount = document.getElementById('totalRolesCount');
+            if (rolesCount) {
+                rolesCount.textContent = roleItems.length;
+            }
+            
             // Update breadcrumbs
             const bc = document.getElementById('breadcrumbs');
             bc.innerHTML = '<span class="breadcrumb-current">Database Credentials</span>';
