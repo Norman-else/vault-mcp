@@ -1162,13 +1162,24 @@
         .empty-action-btn:hover {
             background: var(--bg-hover);
             border-color: var(--primary);
+            color: var(--primary);
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+        }
+        
+        .empty-action-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
         }
         
         .empty-action-btn svg {
             width: 16px;
             height: 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .empty-action-btn:hover svg {
+            stroke: var(--primary);
         }
         
         .empty-stats {
