@@ -538,6 +538,72 @@
             border-color: var(--text-muted);
         }
 
+        /* Add Key Button in Header */
+        .btn-icon-text {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-icon-text:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-icon-text:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-icon-text .icon {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Inline Edit Form Row */
+        .kv-item-edit {
+            background: rgba(59, 130, 246, 0.05);
+            border: 2px solid var(--primary);
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .edit-form-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr auto;
+            gap: 12px;
+            align-items: start;
+        }
+
+        .edit-form-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .edit-key-readonly {
+            background: var(--bg-secondary);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        /* Disabled state for other rows */
+        .kv-item.editing-mode {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
         /* Form Elements */
         .form-section {
             padding: 24px;
@@ -1853,33 +1919,17 @@
                         <div class="card">
                             <div class="card-header">
                                 <span class="card-title">Key-Value Pairs</span>
+                                <button class="btn-icon-text" onclick="startAddKey()" id="addKeyBtn">
+                                    <svg class="icon" viewBox="0 0 24 24">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                    Add Key
+                                </button>
                             </div>
                             
                             <div class="kv-list" id="kvRows">
                                 <!-- Rows loaded via JS -->
-                            </div>
-
-                            <!-- Add Key Form -->
-                            <div class="form-section">
-                                <div class="form-grid">
-                                    <div class="form-group">
-                                        <label class="label">Key</label>
-                                        <input type="text" class="input" id="newKey" placeholder="API_KEY">
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="label">Value</label>
-                                        <div class="input-with-toggle">
-                                            <textarea class="input textarea-input" id="newValue" placeholder="Enter secret value" rows="1"></textarea>
-                                            <button type="button" class="input-toggle-btn textarea-toggle-btn" onclick="toggleInputVisibility()" title="Toggle visibility">
-                                                <svg class="icon" id="inputToggleIcon" style="width: 18px; height: 18px;" viewBox="0 0 24 24">
-                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                                    <circle cx="12" cy="12" r="3"></circle>
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <button class="btn-primary" onclick="addOrUpdateKey()">Add / Update</button>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -2610,6 +2660,7 @@
                     Object.entries(data.data).forEach(([key, value]) => {
                         const item = document.createElement('div');
                         item.className = 'kv-item';
+                        item.setAttribute('data-key', key);
                         
                         // Only escape value for display attribute, not for DOM text content assignment which is safe
                         const escapedValue = escapeHtml(String(value));
@@ -2617,7 +2668,7 @@
                         item.innerHTML = `
                             <div class="key-name">${key}</div>
                             <div class="value-container">
-                                <div class="value-masked" id="val-${key}">•••••••••••••••</div>
+                                <div class="value-masked kv-value" id="val-${key}" data-full-value="${escapedValue}">•••••••••••••••</div>
                             </div>
                             <div class="kv-actions">
                                 <button class="btn-icon" title="Edit Key" onclick="editKey('${key}')">
@@ -2649,16 +2700,153 @@
 
         // --- Actions ---
 
-        async function addOrUpdateKey() {
-            const key = document.getElementById('newKey').value.trim();
-            const value = document.getElementById('newValue').value;
+        // Add new key - entry point from header button
+        function startAddKey() {
+            const list = document.getElementById('kvRows');
+            const existingEdit = list.querySelector('.kv-item-edit');
+            
+            // If already has edit/add form, don't allow another
+            if (existingEdit) {
+                showToast('Please finish current editing first', 'error');
+                return;
+            }
+            
+            // Disable Add Key button
+            document.getElementById('addKeyBtn').disabled = true;
+            
+            // Mark other rows as editing-mode
+            document.querySelectorAll('.kv-item').forEach(item => {
+                item.classList.add('editing-mode');
+            });
+            
+            // Insert add form at top of list
+            const addForm = createInlineEditForm('', '', true);
+            list.insertBefore(addForm, list.firstChild);
+            
+            // Focus on Key input
+            addForm.querySelector('.edit-key-input').focus();
+        }
 
+        // Create inline edit form
+        function createInlineEditForm(key, value, isAddMode = false) {
+            const formRow = document.createElement('div');
+            formRow.className = 'kv-item-edit';
+            formRow.setAttribute('data-editing-key', key);
+            
+            const keyReadonly = isAddMode ? '' : 'readonly';
+            const keyClass = isAddMode ? '' : 'edit-key-readonly';
+            const actionBtnText = isAddMode ? 'Add' : 'Save';
+            const actionBtnFunc = isAddMode ? 'saveNewKey' : 'saveEditKey';
+            
+            formRow.innerHTML = `
+                <div class="edit-form-grid">
+                    <div class="form-group">
+                        <input type="text" 
+                               class="input edit-key-input ${keyClass}" 
+                               value="${escapeHtml(key)}" 
+                               placeholder="Key name"
+                               ${keyReadonly}>
+                    </div>
+                    <div class="form-group">
+                        <div class="input-with-toggle">
+                            <textarea class="input textarea-input edit-value-input" 
+                                      placeholder="Enter value" 
+                                      rows="1">${escapeHtml(value)}</textarea>
+                            <button type="button" 
+                                    class="input-toggle-btn textarea-toggle-btn" 
+                                    onclick="toggleEditInputVisibility(this)"
+                                    title="Toggle visibility">
+                                <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="edit-form-actions">
+                        <button class="btn-primary" onclick="${actionBtnFunc}(this)">${actionBtnText}</button>
+                        <button class="btn-secondary" onclick="cancelInlineEdit(this)">Cancel</button>
+                    </div>
+                </div>
+            `;
+            
+            // Add keyboard support
+            formRow.addEventListener('keydown', function(e) {
+                // Escape to cancel
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    const cancelBtn = formRow.querySelector('.btn-secondary');
+                    cancelBtn.click();
+                }
+                // Ctrl/Cmd + Enter to save
+                else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    const saveBtn = formRow.querySelector('.btn-primary');
+                    saveBtn.click();
+                }
+            });
+            
+            return formRow;
+        }
+
+        // Edit existing key
+        function editKey(key) {
+            const list = document.getElementById('kvRows');
+            const existingEdit = list.querySelector('.kv-item-edit');
+            
+            // If already has edit/add form, don't allow another
+            if (existingEdit) {
+                showToast('Please finish current editing first', 'error');
+                return;
+            }
+            
+            // Disable Add Key button
+            document.getElementById('addKeyBtn').disabled = true;
+            
+            // Find the row to edit
+            const targetRow = list.querySelector(`[data-key="${key}"]`);
+            if (!targetRow) return;
+            
+            // Get current value from data attribute
+            const valueEl = targetRow.querySelector('.kv-value');
+            const currentValue = valueEl.getAttribute('data-full-value') || valueEl.textContent;
+            
+            // Decode HTML entities from the escaped value
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = currentValue;
+            const decodedValue = textarea.value;
+            
+            // Mark other rows as editing-mode
+            document.querySelectorAll('.kv-item').forEach(item => {
+                item.classList.add('editing-mode');
+            });
+            
+            // Create edit form and replace current row
+            const editForm = createInlineEditForm(key, decodedValue, false);
+            targetRow.replaceWith(editForm);
+            
+            // Focus on Value input
+            editForm.querySelector('.edit-value-input').focus();
+        }
+
+        // Save new key
+        async function saveNewKey(btn) {
+            const formRow = btn.closest('.kv-item-edit');
+            const key = formRow.querySelector('.edit-key-input').value.trim();
+            const value = formRow.querySelector('.edit-value-input').value;
+            
             if (!key || !value) {
                 showToast('Please enter both key and value', 'error');
                 return;
             }
+            
             if (!currentSecret) return;
-
+            
+            // Disable button to prevent double-submit
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = 'Adding...';
+            
             try {
                 const response = await fetch('/api/secrets/update', {
                     method: 'POST',
@@ -2670,20 +2858,110 @@
                         value: value
                     })
                 });
-
+                
                 const data = await response.json();
                 if (data.success) {
-                    showToast(`Key "${key}" updated`);
-                    document.getElementById('newKey').value = '';
-                    document.getElementById('newValue').value = '';
-                    loadSecret(currentSecret);
+                    showToast(`Key "${key}" added successfully`);
+                    loadSecret(currentSecret); // Reload entire secret
                 } else {
-                    showToast(data.error || 'Error updating key', 'error');
+                    // Re-enable button on error
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                    showToast(data.error || 'Error adding key', 'error');
                 }
             } catch (error) {
+                // Re-enable button on network error
+                btn.disabled = false;
+                btn.textContent = originalText;
                 showToast('Network error', 'error');
             }
         }
+
+        // Save edited key
+        async function saveEditKey(btn) {
+            const formRow = btn.closest('.kv-item-edit');
+            const key = formRow.querySelector('.edit-key-input').value.trim();
+            const value = formRow.querySelector('.edit-value-input').value;
+            
+            if (!key || !value) {
+                showToast('Please enter both key and value', 'error');
+                return;
+            }
+            
+            if (!currentSecret) return;
+            
+            // Disable button to prevent double-submit
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = 'Saving...';
+            
+            try {
+                const response = await fetch('/api/secrets/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: currentSecret,
+                        mount_point: 'secret',
+                        key: key,
+                        value: value
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showToast(`Key "${key}" updated successfully`);
+                    loadSecret(currentSecret); // Reload entire secret
+                } else {
+                    // Re-enable button on error
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                    showToast(data.error || 'Error updating key', 'error');
+                }
+            } catch (error) {
+                // Re-enable button on network error
+                btn.disabled = false;
+                btn.textContent = originalText;
+                showToast('Network error', 'error');
+            }
+        }
+
+        // Cancel inline edit
+        function cancelInlineEdit(btn) {
+            const formRow = btn.closest('.kv-item-edit');
+            const editingKey = formRow.getAttribute('data-editing-key');
+            
+            // Enable Add Key button
+            document.getElementById('addKeyBtn').disabled = false;
+            
+            // Restore normal state for other rows
+            document.querySelectorAll('.kv-item').forEach(item => {
+                item.classList.remove('editing-mode');
+            });
+            
+            // If editing existing key, reload to restore original row; if adding, just remove
+            if (editingKey) {
+                loadSecret(currentSecret);
+            } else {
+                formRow.remove();
+            }
+        }
+
+        // Toggle edit form value visibility
+        function toggleEditInputVisibility(btn) {
+            const textarea = btn.parentElement.querySelector('.edit-value-input');
+            const icon = btn.querySelector('svg');
+            
+            if (textarea.type === 'password' || textarea.classList.contains('masked')) {
+                textarea.type = 'text';
+                textarea.classList.remove('masked');
+                icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+            } else {
+                textarea.type = 'password';
+                textarea.classList.add('masked');
+                icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+            }
+        }
+
 
         async function createNewSecret() {
             const path = document.getElementById('newSecretPath').value.trim();
@@ -2857,17 +3135,6 @@
                 showToast('Copied to clipboard');
             });
         }
-        
-        function editKey(key) {
-            // Fill key into the input field
-            document.getElementById('newKey').value = key;
-            // Clear value field
-            document.getElementById('newValue').value = '';
-            // Focus on value input
-            document.getElementById('newValue').focus();
-            // Scroll to form section
-            document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
 
         function showToast(msg, type = 'success') {
             const toast = document.getElementById('toast');
@@ -2904,40 +3171,6 @@
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
         }
-        
-        function toggleInputVisibility() {
-            const input = document.getElementById('newValue');
-            const icon = document.getElementById('inputToggleIcon');
-            
-            // Use custom attribute to track visibility state
-            const isHidden = input.getAttribute('data-hidden') === 'true';
-            
-            if (isHidden) {
-                // Show the actual value
-                input.setAttribute('data-hidden', 'false');
-                input.style.webkitTextSecurity = 'none';
-                input.style.textSecurity = 'none';
-                // Change to "eye-off" icon
-                icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
-            } else {
-                // Hide the value
-                input.setAttribute('data-hidden', 'true');
-                input.style.webkitTextSecurity = 'disc';
-                input.style.textSecurity = 'disc';
-                // Change to "eye" icon
-                icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
-            }
-        }
-        
-        // Initialize textarea with hidden state
-        window.addEventListener('load', function() {
-            const input = document.getElementById('newValue');
-            if (input) {
-                input.setAttribute('data-hidden', 'true');
-                input.style.webkitTextSecurity = 'disc';
-                input.style.textSecurity = 'disc';
-            }
-        });
         
         // --- Search Modal Functions ---
         
