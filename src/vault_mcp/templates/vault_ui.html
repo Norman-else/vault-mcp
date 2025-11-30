@@ -2788,14 +2788,14 @@
             envSelector.style.display = 'block';
             description.innerHTML = 'Select an environment and login to continue.';
             
-            // Reset selector
+            // Reset selector - use specific selector for login modal
             selectedLoginEnv = '';
-            const trigger = document.querySelector('.env-custom-select-trigger');
+            const trigger = document.querySelector('#envCustomSelect .env-custom-select-trigger');
             if (trigger) {
                 trigger.textContent = 'Select Environment...';
                 trigger.classList.add('placeholder');
             }
-            document.querySelectorAll('.env-custom-select-option').forEach(option => {
+            document.querySelectorAll('#envCustomSelect .env-custom-select-option').forEach(option => {
                 option.classList.remove('selected');
             });
             loginBtn.disabled = true;
@@ -2849,15 +2849,15 @@
                 'local': 'LOCAL - Local Container'
             };
             
-            // Update trigger text
-            const trigger = document.querySelector('.env-custom-select-trigger');
+            // Update trigger text - use specific selector for login modal
+            const trigger = document.querySelector('#envCustomSelect .env-custom-select-trigger');
             if (trigger) {
                 trigger.textContent = envLabels[env] || env.toUpperCase();
                 trigger.classList.remove('placeholder');
             }
             
-            // Update selected state
-            document.querySelectorAll('.env-custom-select-option').forEach(option => {
+            // Update selected state - only in login modal
+            document.querySelectorAll('#envCustomSelect .env-custom-select-option').forEach(option => {
                 option.classList.remove('selected');
                 if (option.dataset.value === env) {
                     option.classList.add('selected');

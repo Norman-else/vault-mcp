@@ -2,8 +2,10 @@
 
 import os
 import json
+import io
 import logging
 import subprocess
+import sys
 from typing import Any, Optional
 from urllib.parse import urljoin
 from datetime import datetime
@@ -22,8 +24,14 @@ try:
 except ImportError:
     SLACK_AVAILABLE = False
 
-# 设置日志
-logging.basicConfig(level=logging.INFO)
+# 设置日志 - 使用 stderr 输出（MCP 协议使用 stdout 通信，不能污染）
+# 在 Windows 上强制使用 UTF-8 编码，避免 Unicode 字符（✓、✗ 等）导致的 UnicodeEncodeError
+stderr_utf8 = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(stderr_utf8)]
+)
 logger = logging.getLogger(__name__)
 
 # Import Web UI (lazy import to avoid circular dependency)
@@ -202,14 +210,17 @@ class VaultMCPServer:
             # When called from Web UI, need special handling to show MFA GUI prompts
             if from_web_ui:
                 if system == "Windows":
-                    # Windows: Use CREATE_NEW_CONSOLE to show MFA input window
-                    CREATE_NEW_CONSOLE = 0x00000010
+                    # Windows: Use wincredui for native GUI MFA prompt, no console window
+                    CREATE_NO_WINDOW = 0x08000000
+                    env = os.environ.copy()
+                    env["AWS_VAULT_PROMPT"] = "wincredui"  # Force Windows Credential UI
                     process = subprocess.Popen(
                         cmd,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
-                        creationflags=CREATE_NEW_CONSOLE,
+                        creationflags=CREATE_NO_WINDOW,
+                        env=env,
                     )
                     try:
                         stdout, stderr = process.communicate(timeout=90)
