@@ -2062,9 +2062,9 @@
                 currentSecret = null;
                 currentPath = ''; // Reset to root path
                 
-                // Immediately clear the secrets list to show loading state
+                // Immediately show loading spinner (same as Database Credentials)
                 const secretList = document.getElementById('secretList');
-                secretList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px;">Loading...</div>';
+                secretList.innerHTML = '<div style="padding: 20px; display: flex; justify-content: center;"><div class="spinner"></div></div>';
                 
                 // Show KV Secrets UI
                 document.getElementById('kvSecretsSection').style.display = 'block';
