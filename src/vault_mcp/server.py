@@ -31,8 +31,11 @@ except ImportError:
 # 在 Windows 上强制使用 UTF-8 编码
 stderr_utf8 = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 
-# 创建日志目录
-log_dir = os.path.join(os.path.expanduser('~'), '.vault-mcp', 'logs')
+# 创建日志目录 - 在项目根目录下
+# 获取项目根目录（src/vault_mcp/server.py -> 向上两级）
+current_file = os.path.abspath(__file__)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+log_dir = os.path.join(project_root, 'logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, f'vault-mcp-{datetime.now().strftime("%Y%m%d")}.log')
 
