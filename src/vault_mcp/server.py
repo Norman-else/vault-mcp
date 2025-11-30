@@ -29,10 +29,20 @@ except ImportError:
 stderr_utf8 = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    # 简化格式：移除时间戳（Cursor 已经添加），只保留模块名和消息
+    format='[%(name)s] %(message)s',
     handlers=[logging.StreamHandler(stderr_utf8)]
 )
 logger = logging.getLogger(__name__)
+
+# 减少第三方库的日志输出，避免 MCP 日志中显示过多 [error] 标签
+# 只显示 WARNING 及以上级别的日志
+logging.getLogger('werkzeug').setLevel(logging.WARNING)  # Flask HTTP 服务器
+logging.getLogger('mcp.server').setLevel(logging.WARNING)  # MCP 服务器内部日志
+logging.getLogger('mcp.server.lowlevel').setLevel(logging.WARNING)  # MCP 低级别日志
+logging.getLogger('urllib3').setLevel(logging.WARNING)  # HTTP 请求库
+logging.getLogger('boto3').setLevel(logging.WARNING)  # AWS SDK
+logging.getLogger('botocore').setLevel(logging.WARNING)  # AWS SDK 核心
 
 # Import Web UI (lazy import to avoid circular dependency)
 try:
