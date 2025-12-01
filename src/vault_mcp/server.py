@@ -1155,6 +1155,16 @@ async def main():
     logger.info("Starting Vault MCP Server...")
 
     vault_server = VaultMCPServer()
+    
+    # # 自动启动 Web UI（如果可用）
+    # if WEB_UI_AVAILABLE and vault_server.web_ui is None:
+    #     try:
+    #         vault_server.web_ui = VaultWebUI(vault_server)
+    #         vault_server.web_ui.start()
+    #         logger.info(f"Web UI auto-started at http://{vault_server.web_ui.host}:{vault_server.web_ui.port}")
+    #     except Exception as e:
+    #         logger.warning(f"Failed to auto-start Web UI: {e}")
+    
     server = Server("vault-mcp")
 
     # 注册资源（空列表，因为我们不使用 resources）
