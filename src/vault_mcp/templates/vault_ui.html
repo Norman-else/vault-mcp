@@ -1350,6 +1350,152 @@
         .toast-error { border-left: 4px solid var(--danger); }
         .toast-warning { border-left: 4px solid var(--warning); }
 
+        /* Timeout Closure Notice Page */
+        .timeout-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-body);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            animation: fadeInTimeout 0.5s ease-in-out forwards;
+        }
+
+        @keyframes fadeInTimeout {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .timeout-notice-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 48px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+        }
+
+        .timeout-notice-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            color: var(--warning);
+            opacity: 0.8;
+        }
+
+        .timeout-notice-icon svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .timeout-notice-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+
+        .timeout-notice-description {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+            line-height: 1.6;
+        }
+
+        .timeout-notice-description span {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .timeout-notice-instructions {
+            text-align: left;
+            margin-bottom: 24px;
+        }
+
+        .timeout-instructions-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+
+        .timeout-instruction-method {
+            margin-bottom: 20px;
+        }
+
+        .timeout-method-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .timeout-command-box {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--primary);
+            text-align: center;
+        }
+
+        .timeout-command-box code {
+            background: none;
+            padding: 0;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .timeout-prompts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .timeout-prompt-item {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 16px;
+            font-size: 14px;
+            color: var(--text-primary);
+            font-style: italic;
+        }
+
+        .timeout-notice-note {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 16px;
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-align: left;
+        }
+
+        .timeout-notice-note svg {
+            flex-shrink: 0;
+            margin-top: 2px;
+            color: var(--warning);
+        }
+
         /* Spinner */
         .spinner {
             width: 24px;
@@ -2477,6 +2623,47 @@
         <div id="toastMessage">Operation successful</div>
     </div>
 
+    <!-- Timeout Closure Notice Page -->
+    <div class="timeout-overlay" id="timeoutOverlay" style="display: none;">
+        <div class="timeout-notice-card">
+            <div class="timeout-notice-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+            </div>
+            <h1 class="timeout-notice-title">Web UI Auto-Closed</h1>
+            <p class="timeout-notice-description" id="timeoutNoticeDescription">
+                Web UI has been automatically closed after <span id="timeoutMinutes">15</span> minutes of inactivity.
+            </p>
+            <div class="timeout-notice-instructions">
+                <h2 class="timeout-instructions-title">To reopen the Web UI:</h2>
+                <div class="timeout-instruction-method">
+                    <div class="timeout-method-label">Slash Command:</div>
+                    <div class="timeout-command-box">
+                        <code>/open_vault_web_ui</code>
+                    </div>
+                </div>
+                <div class="timeout-instruction-method">
+                    <div class="timeout-method-label">Natural Language Prompts:</div>
+                    <div class="timeout-prompts-list">
+                        <div class="timeout-prompt-item">"open Vault Web UI"</div>
+                        <div class="timeout-prompt-item">"open Vault graphical interface"</div>
+                        <div class="timeout-prompt-item">"I want to use Vault's web interface"</div>
+                    </div>
+                </div>
+            </div>
+            <div class="timeout-notice-note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span>Note: Refreshing this page will not work. You must use the command or prompts above to restart the Web UI server.</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Search Modal -->
     <div class="search-modal-overlay" id="searchModal">
         <div class="search-modal">
@@ -2767,23 +2954,40 @@
                 const response = await fetch('/api/timeout');
                 const data = await response.json();
                 
-                if (!data.success) {
-                    return;
-                }
-                
                 const countdownElement = document.getElementById('timeoutCountdown');
                 const countdownText = document.getElementById('timeoutCountdownText');
+                
+                if (!data.success) {
+                    // If API call failed, server might be down - show closure page with default timeout
+                    if (countdownElement) {
+                        countdownElement.style.display = 'none';
+                    }
+                    showTimeoutClosurePage(900); // Default 15 minutes if we can't get the value
+                    return;
+                }
                 
                 if (!countdownElement || !countdownText) {
                     return;
                 }
                 
                 const remainingSeconds = data.remaining_seconds;
+                const timeoutSeconds = data.timeout_seconds;
                 
                 // Hide countdown if server is not running or timeout is 0
-                if (remainingSeconds === 0 || !data.timeout_seconds) {
+                if (remainingSeconds === 0 || !timeoutSeconds) {
                     countdownElement.style.display = 'none';
+                    // Show closure notice page when timeout reached
+                    if (remainingSeconds === 0 && timeoutSeconds) {
+                        showTimeoutClosurePage(timeoutSeconds);
+                    }
                     return;
+                }
+                
+                // Show closure notice page when 5 seconds or less remaining
+                if (remainingSeconds <= 5) {
+                    showTimeoutClosurePage(timeoutSeconds);
+                } else {
+                    hideTimeoutClosurePage();
                 }
                 
                 countdownElement.style.display = 'flex';
@@ -2808,6 +3012,12 @@
                 showTimeoutWarning(remainingSeconds);
             } catch (error) {
                 console.error('Error updating timeout countdown:', error);
+                // On error, assume server is down and show closure page
+                const countdownElement = document.getElementById('timeoutCountdown');
+                if (countdownElement) {
+                    countdownElement.style.display = 'none';
+                }
+                showTimeoutClosurePage(900); // Default 15 minutes if we can't get the value
             }
         }
         
@@ -2857,6 +3067,41 @@
             if (timeoutUpdateInterval) {
                 clearInterval(timeoutUpdateInterval);
                 timeoutUpdateInterval = null;
+            }
+        }
+        
+        function showTimeoutClosurePage(timeoutSeconds) {
+            const overlay = document.getElementById('timeoutOverlay');
+            const appShell = document.querySelector('.app-shell');
+            const timeoutMinutes = Math.floor(timeoutSeconds / 60);
+            
+            if (!overlay) return;
+            
+            // Update timeout minutes in the description
+            const timeoutMinutesElement = document.getElementById('timeoutMinutes');
+            if (timeoutMinutesElement) {
+                timeoutMinutesElement.textContent = timeoutMinutes;
+            }
+            
+            // Hide main content
+            if (appShell) {
+                appShell.style.display = 'none';
+            }
+            
+            // Show overlay
+            overlay.style.display = 'flex';
+        }
+        
+        function hideTimeoutClosurePage() {
+            const overlay = document.getElementById('timeoutOverlay');
+            const appShell = document.querySelector('.app-shell');
+            
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+            
+            if (appShell) {
+                appShell.style.display = 'flex';
             }
         }
         
