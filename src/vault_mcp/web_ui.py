@@ -5,6 +5,7 @@ import sys
 import json
 import logging
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from typing import Optional
@@ -39,10 +40,29 @@ class VaultWebUI:
         self.port = int(os.getenv('WEB_UI_PORT', '8765'))
         self.host = os.getenv('WEB_UI_HOST', '0.0.0.0')
         
+        # Timeout management
+        self.last_access_time = time.time()
+        timeout_minutes = int(os.getenv('WEB_UI_TIMEOUT_MINUTES', '15'))
+        self.timeout_seconds = timeout_minutes * 60
+        self.check_interval_seconds = int(os.getenv('WEB_UI_CHECK_INTERVAL_SECONDS', '60'))
+        self.server = None
+        self.timeout_check_thread = None
+        self._shutdown_event = threading.Event()
+        
         self._setup_routes()
     
     def _setup_routes(self):
         """Setup Flask routes."""
+        
+        @self.app.before_request
+        def update_access_time():
+            """Update last access time for timeout tracking."""
+            # Exclude static resources and timeout API from access tracking
+            if (request.path.startswith('/static/') or 
+                request.path == '/favicon.ico' or 
+                request.path == '/api/timeout'):
+                return
+            self.last_access_time = time.time()
         
         @self.app.route('/')
         def index():
@@ -571,6 +591,25 @@ class VaultWebUI:
                 'authenticated': self.vault_server._ensure_authenticated(),
                 'available_environments': list(self.vault_server.environments.keys())
             })
+        
+        @self.app.route('/api/timeout', methods=['GET'])
+        def get_timeout():
+            """Get remaining time until auto-shutdown."""
+            if not self.is_running:
+                return jsonify({
+                    'success': True,
+                    'remaining_seconds': 0,
+                    'timeout_seconds': self.timeout_seconds
+                })
+            
+            elapsed = time.time() - self.last_access_time
+            remaining = max(0, self.timeout_seconds - elapsed)
+            
+            return jsonify({
+                'success': True,
+                'remaining_seconds': int(remaining),
+                'timeout_seconds': self.timeout_seconds
+            })
 
         @self.app.route('/api/login', methods=['POST'])
         def login():
@@ -607,11 +646,52 @@ class VaultWebUI:
             logger.error(f"Error loading HTML template: {e}")
             return "<h1>Error loading UI template</h1>"
     
+    def _check_timeout(self):
+        """Background thread to check for timeout and shutdown server if needed."""
+        while not self._shutdown_event.is_set():
+            # Wait for check interval or shutdown event
+            if self._shutdown_event.wait(timeout=self.check_interval_seconds):
+                # Shutdown event was set, exit the loop
+                break
+            
+            # Check if timeout has been reached
+            if self.is_running and self.server:
+                elapsed = time.time() - self.last_access_time
+                if elapsed > self.timeout_seconds:
+                    logger.info(f"Web UI timeout reached ({elapsed:.0f}s > {self.timeout_seconds}s), shutting down...")
+                    self.stop()
+                    break
+    
+    def stop(self):
+        """Stop the Web UI server gracefully."""
+        if not self.is_running:
+            return
+        
+        logger.info("Stopping Web UI server...")
+        
+        # Signal timeout check thread to stop
+        self._shutdown_event.set()
+        
+        # Shutdown the server
+        if self.server:
+            try:
+                self.server.shutdown()
+                logger.info("Web UI server stopped gracefully")
+            except Exception as e:
+                logger.error(f"Error stopping server: {e}")
+        
+        self.is_running = False
+        self.server = None
+    
     def start(self):
         """Start the Web UI server in a background thread."""
         if self.is_running:
             logger.info("Web UI is already running")
             return
+        
+        # Reset shutdown event and access time
+        self._shutdown_event.clear()
+        self.last_access_time = time.time()
         
         def run_server():
             # Use make_server instead of app.run() to avoid Flask CLI messages
@@ -624,13 +704,21 @@ class VaultWebUI:
             )
             # Disable werkzeug's request logging
             server.log = lambda *args, **kwargs: None
+            
+            # Save server instance for timeout shutdown
+            self.server = server
             server.serve_forever()
         
+        # Start server thread
         thread = threading.Thread(target=run_server, daemon=True)
         thread.start()
         self.is_running = True
         
-        logger.info(f"✓ Web UI started at http://{self.host}:{self.port}")
+        # Start timeout check thread
+        self.timeout_check_thread = threading.Thread(target=self._check_timeout, daemon=True)
+        self.timeout_check_thread.start()
+        
+        logger.info(f"✓ Web UI started at http://{self.host}:{self.port} (timeout: {self.timeout_seconds//60} minutes)")
     
     def open_browser(self):
         """Open the Web UI in the default browser."""

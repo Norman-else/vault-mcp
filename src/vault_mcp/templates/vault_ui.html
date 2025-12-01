@@ -2051,6 +2051,52 @@
             width: 16px;
             height: 16px;
         }
+        
+        /* Timeout Countdown */
+        .timeout-countdown {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background-color: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--primary);
+            transition: all 0.3s ease;
+        }
+        
+        .timeout-countdown.warning {
+            background-color: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.3);
+            color: var(--warning);
+        }
+        
+        .timeout-countdown.danger {
+            background-color: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: var(--danger);
+            animation: pulse-warning 1s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-warning {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .timeout-countdown-icon {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+        
+        .timeout-countdown-text {
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.5px;
+        }
 
         /* Responsive */
         @media (max-width: 768px) {
@@ -2152,6 +2198,14 @@
                             <path d="m21 21-4.35-4.35"></path>
                         </svg>
                     </button>
+                    
+                    <div class="timeout-countdown" id="timeoutCountdown" title="Auto-shutdown countdown">
+                        <svg class="timeout-countdown-icon" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        <span class="timeout-countdown-text" id="timeoutCountdownText">--:--</span>
+                    </div>
                     
                     <div class="env-switcher">
                         <div class="current-env-display" id="currentEnvDisplay">
@@ -2680,6 +2734,7 @@
         // --- API Interaction ---
 
         let currentEnv = null;
+        let timeoutUpdateInterval = null;
         
         async function loadEnvironment() {
             try {
@@ -2698,6 +2753,70 @@
                 }
             } catch (error) {
                 console.error('Error loading environment:', error);
+            }
+        }
+        
+        async function updateTimeoutCountdown() {
+            try {
+                const response = await fetch('/api/timeout');
+                const data = await response.json();
+                
+                if (!data.success) {
+                    return;
+                }
+                
+                const countdownElement = document.getElementById('timeoutCountdown');
+                const countdownText = document.getElementById('timeoutCountdownText');
+                
+                if (!countdownElement || !countdownText) {
+                    return;
+                }
+                
+                const remainingSeconds = data.remaining_seconds;
+                
+                // Hide countdown if server is not running or timeout is 0
+                if (remainingSeconds === 0 || !data.timeout_seconds) {
+                    countdownElement.style.display = 'none';
+                    return;
+                }
+                
+                countdownElement.style.display = 'flex';
+                
+                // Format time as MM:SS
+                const minutes = Math.floor(remainingSeconds / 60);
+                const seconds = remainingSeconds % 60;
+                const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                countdownText.textContent = formattedTime;
+                
+                // Update styling based on remaining time
+                countdownElement.classList.remove('warning', 'danger');
+                if (remainingSeconds <= 60) {
+                    // Less than 1 minute - danger (red)
+                    countdownElement.classList.add('danger');
+                } else if (remainingSeconds <= 300) {
+                    // Less than 5 minutes - warning (yellow)
+                    countdownElement.classList.add('warning');
+                }
+            } catch (error) {
+                console.error('Error updating timeout countdown:', error);
+            }
+        }
+        
+        function startTimeoutCountdown() {
+            // Update immediately
+            updateTimeoutCountdown();
+            
+            // Update every 5 seconds by querying backend
+            if (timeoutUpdateInterval) {
+                clearInterval(timeoutUpdateInterval);
+            }
+            timeoutUpdateInterval = setInterval(updateTimeoutCountdown, 5000);
+        }
+        
+        function stopTimeoutCountdown() {
+            if (timeoutUpdateInterval) {
+                clearInterval(timeoutUpdateInterval);
+                timeoutUpdateInterval = null;
             }
         }
         
@@ -4550,6 +4669,7 @@
         initTheme();
         loadEnvironment();
         loadSecrets();
+        startTimeoutCountdown();
 
         // Close modal on outside click
         document.getElementById('newSecretModal').addEventListener('click', function(e) {
