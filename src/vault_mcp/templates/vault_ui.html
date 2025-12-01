@@ -1348,6 +1348,7 @@
         
         .toast-success { border-left: 4px solid var(--success); }
         .toast-error { border-left: 4px solid var(--danger); }
+        .toast-warning { border-left: 4px solid var(--warning); }
 
         /* Spinner */
         .spinner {
@@ -2735,6 +2736,11 @@
 
         let currentEnv = null;
         let timeoutUpdateInterval = null;
+        let timeoutWarningShown = {
+            twoMinutes: false,
+            oneMinute: false,
+            thirtySeconds: false
+        };
         
         async function loadEnvironment() {
             try {
@@ -2797,8 +2803,42 @@
                     // Less than 5 minutes - warning (yellow)
                     countdownElement.classList.add('warning');
                 }
+                
+                // Show friendly warnings at specific time thresholds
+                showTimeoutWarning(remainingSeconds);
             } catch (error) {
                 console.error('Error updating timeout countdown:', error);
+            }
+        }
+        
+        function showTimeoutWarning(remainingSeconds) {
+            const minutes = Math.floor(remainingSeconds / 60);
+            const seconds = remainingSeconds % 60;
+            
+            // Reset warning flags if time increased (user made an action)
+            if (remainingSeconds > 120) {
+                timeoutWarningShown.twoMinutes = false;
+                timeoutWarningShown.oneMinute = false;
+                timeoutWarningShown.thirtySeconds = false;
+                return;
+            }
+            
+            // Show warning at 2 minutes remaining
+            if (remainingSeconds <= 120 && remainingSeconds > 115 && !timeoutWarningShown.twoMinutes) {
+                timeoutWarningShown.twoMinutes = true;
+                showToast('Web UI will auto-close in 2 minutes. Any action will reset the timer.', 'warning');
+            }
+            
+            // Show warning at 1 minute remaining
+            if (remainingSeconds <= 60 && remainingSeconds > 55 && !timeoutWarningShown.oneMinute) {
+                timeoutWarningShown.oneMinute = true;
+                showToast('Web UI will auto-close in 1 minute. Click anywhere to reset the timer.', 'warning');
+            }
+            
+            // Show final warning at 30 seconds remaining
+            if (remainingSeconds <= 30 && remainingSeconds > 25 && !timeoutWarningShown.thirtySeconds) {
+                timeoutWarningShown.thirtySeconds = true;
+                showToast('Web UI will auto-close in 30 seconds! Please save your work.', 'error');
             }
         }
         
@@ -4006,13 +4046,17 @@
             
             if (type === 'success') {
                 icon.innerHTML = '<svg class="icon" style="color:var(--success)" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            } else if (type === 'warning') {
+                icon.innerHTML = '<svg class="icon" style="color:var(--warning)" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
             } else {
                 icon.innerHTML = '<svg class="icon" style="color:var(--danger)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1=\"12\" y1=\"16\" x2=\"12.01\" y2=\"16\"></line></svg>';
             }
 
+            // Show longer for warnings and errors
+            const duration = (type === 'warning' || type === 'error') ? 5000 : 3000;
             setTimeout(() => {
                 toast.classList.remove('active');
-            }, 3000);
+            }, duration);
         }
 
         function openNewSecretModal() {
