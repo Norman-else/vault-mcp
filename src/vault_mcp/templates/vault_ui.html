@@ -2634,7 +2634,7 @@
             </div>
             <h1 class="timeout-notice-title">Web UI Auto-Closed</h1>
             <p class="timeout-notice-description" id="timeoutNoticeDescription">
-                Web UI has been automatically closed after <span id="timeoutMinutes">15</span> minutes of inactivity.
+                Web UI has been automatically closed after <span id="timeoutMinutes">10</span> minutes of inactivity.
             </p>
             <div class="timeout-notice-instructions">
                 <h2 class="timeout-instructions-title">To reopen the Web UI:</h2>
@@ -2923,6 +2923,7 @@
 
         let currentEnv = null;
         let timeoutUpdateInterval = null;
+        let cachedTimeoutSeconds = null; // Cache timeout value from backend to avoid hardcoding
         let timeoutWarningShown = {
             twoMinutes: false,
             oneMinute: false,
@@ -2958,11 +2959,12 @@
                 const countdownText = document.getElementById('timeoutCountdownText');
                 
                 if (!data.success) {
-                    // If API call failed, server might be down - show closure page with default timeout
+                    // If API call failed, server might be down - show closure page
+                    // Use cached timeout value if available, otherwise use default (10 minutes)
                     if (countdownElement) {
                         countdownElement.style.display = 'none';
                     }
-                    showTimeoutClosurePage(900); // Default 15 minutes if we can't get the value
+                    showTimeoutClosurePage(cachedTimeoutSeconds || 600);
                     return;
                 }
                 
@@ -2972,6 +2974,16 @@
                 
                 const remainingSeconds = data.remaining_seconds;
                 const timeoutSeconds = data.timeout_seconds;
+                
+                // Cache the timeout value for later use (e.g., when showing closure page)
+                if (timeoutSeconds) {
+                    cachedTimeoutSeconds = timeoutSeconds;
+                    // Update the initial display value in HTML to match backend configuration
+                    const timeoutMinutesElement = document.getElementById('timeoutMinutes');
+                    if (timeoutMinutesElement) {
+                        timeoutMinutesElement.textContent = Math.floor(timeoutSeconds / 60);
+                    }
+                }
                 
                 // Hide countdown if server is not running or timeout is 0
                 if (remainingSeconds === 0 || !timeoutSeconds) {
@@ -3013,11 +3025,12 @@
             } catch (error) {
                 console.error('Error updating timeout countdown:', error);
                 // On error, assume server is down and show closure page
+                // Use cached timeout value if available, otherwise use default (10 minutes)
                 const countdownElement = document.getElementById('timeoutCountdown');
                 if (countdownElement) {
                     countdownElement.style.display = 'none';
                 }
-                showTimeoutClosurePage(900); // Default 15 minutes if we can't get the value
+                showTimeoutClosurePage(cachedTimeoutSeconds || 600);
             }
         }
         
