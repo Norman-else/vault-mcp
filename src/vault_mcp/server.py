@@ -24,42 +24,42 @@ try:
 except ImportError:
     SLACK_AVAILABLE = False
 
-# 设置日志 - 双重输出策略
-# 1. 文件日志：记录所有详细日志（INFO 及以上）
-# 2. stderr 日志：只输出 ERROR 级别，避免 MCP 日志中显示过多 [error] 标签
+# Logging setup - dual output strategy
+# 1. File logs: record all detailed logs (INFO and above)
+# 2. stderr logs: only output ERROR level to keep MCP logs clean
 
-# 在 Windows 上强制使用 UTF-8 编码
+# Force UTF-8 encoding on Windows
 stderr_utf8 = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 
-# 创建日志目录 - 在项目根目录下
-# 获取项目根目录（src/vault_mcp/server.py -> 向上两级）
+# Create log directory in project root
+# Get project root directory (src/vault_mcp/server.py -> up two levels)
 current_file = os.path.abspath(__file__)
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
 log_dir = os.path.join(project_root, 'logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, f'vault-mcp-{datetime.now().strftime("%Y%m%d")}.log')
 
-# 文件处理器 - 记录所有 INFO 及以上的日志
+# File handler - record all INFO and above logs
 file_handler = logging.FileHandler(log_file, encoding='utf-8')
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
-# stderr 处理器 - 只输出 ERROR 级别，让 MCP 日志保持干净
+# stderr handler - only output ERROR level to keep MCP logs clean
 stderr_handler = logging.StreamHandler(stderr_utf8)
 stderr_handler.setLevel(logging.ERROR)
 stderr_handler.setFormatter(logging.Formatter('[%(name)s] %(levelname)s: %(message)s'))
 
-# 配置根日志记录器
+# Configure root logger
 logging.basicConfig(
     level=logging.INFO,
     handlers=[file_handler, stderr_handler]
 )
 logger = logging.getLogger(__name__)
 
-# 启动时记录日志位置
+# Log file location on startup
 logger.info(f"Vault MCP Server starting... Logs: {log_file}")
 
-# 减少第三方库的详细日志
+# Reduce third-party library verbose logs
 logging.getLogger('werkzeug').setLevel(logging.WARNING)
 logging.getLogger('mcp.server').setLevel(logging.WARNING)
 logging.getLogger('mcp.server.lowlevel').setLevel(logging.WARNING)
@@ -81,15 +81,15 @@ class VaultMCPServer:
 
     def __init__(self):
         self.vault_client: Optional[hvac.Client] = None
-        self.current_env = None  # 当前登录的环境
+        self.current_env = None  # Currently logged in environment
 
-        # Slack 配置
+        # Slack configuration
         self.slack_enabled = os.getenv("SLACK_ENABLED", "false").lower() == "true"
         self.slack_bot_token = os.getenv("SLACK_BOT_TOKEN", "")
         self.slack_user_id = os.getenv("SLACK_USER_ID", "")
         self.slack_client = None
 
-        # 安全配置：是否将查询结果返回给 AI（默认 true）
+        # Security configuration: whether to return query results to AI (default: true)
         self.return_data_to_ai = (
             os.getenv("RETURN_DATA_TO_AI", "true").lower() == "true"
         )
@@ -107,7 +107,7 @@ class VaultMCPServer:
             )
             self.slack_enabled = False
 
-        # 多环境配置
+        # Multi-environment configuration
         self.environments = {
             "dev": {
                 "vault_addr": os.getenv(
@@ -151,14 +151,14 @@ class VaultMCPServer:
             },
         }
 
-        # Web UI 配置
+        # Web UI configuration
         self.web_ui = None  # Will be initialized when needed
 
     def _init_vault_client(self, token: str, vault_addr: str):
-        """初始化 Vault 客户端."""
+        """Initialize Vault client."""
         self.vault_client = hvac.Client(url=vault_addr, token=token)
 
-        # 验证 token 是否有效
+        # Verify token is valid
         try:
             self.vault_client.is_authenticated()
             logger.info("Vault client initialized successfully")
@@ -167,16 +167,16 @@ class VaultMCPServer:
             self.vault_client = None
 
     def _ensure_authenticated(self) -> bool:
-        """确保已认证."""
+        """Ensure authenticated."""
         if self.vault_client and self.vault_client.is_authenticated():
             return True
         return False
 
     def _switch_k8s_context(self, k8s_context: str) -> bool:
-        """切换到指定的 Kubernetes 上下文.
+        """Switch to specified Kubernetes context.
 
         Args:
-            k8s_context: Kubernetes 上下文名称
+            k8s_context: Kubernetes context name
         """
         if not k8s_context:
             logger.info("No k8s_context specified, skipping kubectl context switch")
@@ -185,7 +185,7 @@ class VaultMCPServer:
         try:
             logger.info(f"Switching kubectl context to: {k8s_context}")
 
-            # 检查 kubectl 是否安装
+            # Check if kubectl is installed
             check_cmd = ["kubectl", "config", "current-context"]
             result = subprocess.run(
                 check_cmd, capture_output=True, text=True, timeout=5
@@ -194,12 +194,12 @@ class VaultMCPServer:
             current_context = result.stdout.strip()
             logger.info(f"Current kubectl context: {current_context}")
 
-            # 如果已经是目标上下文，跳过切换
+            # Skip switch if already in target context
             if current_context == k8s_context:
                 logger.info(f"✓ Already in context: {k8s_context}")
                 return True
 
-            # 切换上下文
+            # Switch context
             switch_cmd = ["kubectl", "config", "use-context", k8s_context]
             result = subprocess.run(
                 switch_cmd, capture_output=True, text=True, timeout=10
@@ -214,17 +214,17 @@ class VaultMCPServer:
 
         except FileNotFoundError:
             logger.warning("kubectl not found, skipping context switch")
-            return True  # 如果没有 kubectl，继续尝试连接
+            return True  # If kubectl is not found, continue attempting connection
         except Exception as e:
             logger.error(f"Error switching kubectl context: {e}")
             return False
 
     def _get_aws_credentials_via_awsvault(self, aws_profile: str, from_web_ui: bool = False):
-        """通过 aws-vault 主动获取 AWS 凭证.
+        """Proactively obtain AWS credentials via aws-vault.
 
         Args:
-            aws_profile: AWS profile 名称
-            from_web_ui: 是否从 Web UI 调用（需要弹出 GUI 窗口）
+            aws_profile: AWS profile name
+            from_web_ui: Whether called from Web UI (requires GUI popup window)
         """
         import platform
         
@@ -236,7 +236,7 @@ class VaultMCPServer:
                 "⏳ If MFA prompt appears, please enter your code (90 seconds timeout)..."
             )
 
-            # 执行 aws-vault export 获取凭证（可能需要 MFA 输入）
+            # Execute aws-vault export to get credentials (may require MFA input)
             cmd = ["aws-vault", "export", aws_profile, "--format=json"]
             system = platform.system()
             
@@ -305,9 +305,27 @@ class VaultMCPServer:
 
             if returncode != 0:
                 logger.warning(f"aws-vault export failed: {stderr}")
+                
+                # Clear aws-vault cache to ensure MFA prompt appears on next retry
+                # This prevents the issue where incorrect MFA entry blocks subsequent login attempts
+                logger.info(f"Clearing aws-vault cache for profile: {aws_profile} to allow retry...")
+                try:
+                    clear_result = subprocess.run(
+                        ["aws-vault", "clear", aws_profile],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    if clear_result.returncode == 0:
+                        logger.info(f"✓ Cleared aws-vault cache for {aws_profile}")
+                    else:
+                        logger.warning(f"Failed to clear aws-vault cache: {clear_result.stderr}")
+                except Exception as clear_error:
+                    logger.warning(f"Error clearing aws-vault cache: {clear_error}")
+                
                 return None
 
-            # 解析 JSON 输出
+            # Parse JSON output
             creds_json = json.loads(stdout)
             logger.info("✓ Successfully obtained AWS credentials via aws-vault")
 
@@ -327,23 +345,23 @@ class VaultMCPServer:
             return None
 
     def _safe_format_data(self, data: dict, max_length: int = 2800) -> str:
-        """安全地格式化数据为字符串，确保不超过 Slack 限制.
+        """Safely format data to string, ensuring it doesn't exceed Slack limit.
 
         Args:
-            data: 要格式化的数据
-            max_length: 最大字符数（Slack text 字段限制 3000，留 200 字符余量）
+            data: Data to format
+            max_length: Maximum character count (Slack text field limit 3000, leaving 200 char buffer)
 
         Returns:
-            格式化后的字符串
+            Formatted string
         """
         try:
-            # 尝试序列化为 JSON
+            # Try to serialize as JSON
             formatted = json.dumps(data, indent=2, ensure_ascii=False, default=str)
 
-            # 如果超过长度限制，截断
+            # Truncate if exceeds length limit
             if len(formatted) > max_length:
                 truncated = formatted[:max_length]
-                # 尝试在合理位置截断（找最后一个完整行）
+                # Try to truncate at reasonable position (find last complete line)
                 last_newline = truncated.rfind("\n")
                 if last_newline > 0:
                     truncated = truncated[:last_newline]
@@ -352,7 +370,7 @@ class VaultMCPServer:
             return formatted
         except Exception as e:
             logger.warning(f"Failed to format data: {e}")
-            # 降级：返回简化的字符串表示
+            # Fallback: return simplified string representation
             return str(data)[:max_length]
 
     def _send_slack_notification(
@@ -362,13 +380,13 @@ class VaultMCPServer:
         query_type: str = "general",
         service_name: str = "",
     ):
-        """发送 Slack 通知.
+        """Send Slack notification.
 
         Args:
-            title: 消息标题
-            data: 查询结果数据
-            query_type: 查询类型 (database/kv/general)
-            service_name: 服务名称
+            title: Message title
+            data: Query result data
+            query_type: Query type (database/kv/general)
+            service_name: Service name
         """
         if not self.slack_enabled or not self.slack_client or not self.slack_user_id:
             return
@@ -376,7 +394,7 @@ class VaultMCPServer:
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # 构建消息块
+            # Build message blocks
             blocks = [
                 {
                     "type": "header",
@@ -399,9 +417,9 @@ class VaultMCPServer:
                 {"type": "divider"},
             ]
 
-            # 根据查询类型格式化数据
+            # Format data based on query type
             if query_type == "database":
-                # 数据库凭证：只显示 username, password 和 service
+                # Database credentials: only show username, password and service
                 blocks.append(
                     {
                         "type": "section",
@@ -421,7 +439,7 @@ class VaultMCPServer:
                         if not isinstance(data["username"], str)
                         else data["username"]
                     )
-                    username = username[:500]  # 限制长度
+                    username = username[:500]  # Limit length
                 
                 if "password" in data:
                     password = (
@@ -429,12 +447,12 @@ class VaultMCPServer:
                         if not isinstance(data["password"], str)
                         else data["password"]
                     )
-                    password = password[:500]  # 限制长度
+                    password = password[:500]  # Limit length
 
-                # 添加分隔线
+                # Add divider
                 blocks.append({"type": "divider"})
 
-                # 使用代码块格式显示凭证，便于选中复制
+                # Use code block format to display credentials for easy copy
                 if username or password:
                     credentials_code = ""
                     if username:
@@ -442,7 +460,7 @@ class VaultMCPServer:
                     if password:
                         credentials_code += f"Password: {password}"
                     
-                    # 使用 Section + mrkdwn 的代码块格式
+                    # Use Section + mrkdwn code block format
                     blocks.append(
                         {
                             "type": "section",
@@ -453,7 +471,7 @@ class VaultMCPServer:
                         }
                     )
                 
-                # 添加提示文字
+                # Add hint text
                 blocks.append(
                     {
                         "type": "context",
@@ -466,7 +484,7 @@ class VaultMCPServer:
                     }
                 )
             else:
-                # 其他查询：显示 service 和完整结果
+                # Other queries: show service and complete results
                 blocks.append(
                     {
                         "type": "section",
@@ -477,17 +495,17 @@ class VaultMCPServer:
                     }
                 )
 
-                # 添加分隔线
+                # Add divider
                 blocks.append({"type": "divider"})
 
-                # 使用安全的格式化方法
+                # Use safe formatting method
                 formatted_data = self._safe_format_data(data)
                 data_text = f"```\n{formatted_data}\n```"
                 blocks.append(
                     {"type": "section", "text": {"type": "mrkdwn", "text": data_text}}
                 )
 
-            # 添加警告提示
+            # Add warning note
             blocks.append(
                 {
                     "type": "context",
@@ -500,7 +518,7 @@ class VaultMCPServer:
                 }
             )
 
-            # 发送消息 - 尝试使用 blocks
+            # Send message - try using blocks
             try:
                 response = self.slack_client.chat_postMessage(
                     channel=self.slack_user_id,
@@ -511,7 +529,7 @@ class VaultMCPServer:
                     f"✓ Slack notification sent successfully to {self.slack_user_id}"
                 )
             except SlackApiError as e:
-                # 如果 blocks 格式有问题，降级为纯文本消息
+                # If blocks format has issues, fallback to plain text message
                 if "invalid_blocks" in str(e) or "invalid_text" in str(e):
                     logger.warning(f"Blocks invalid, falling back to plain text: {e}")
                     self._send_slack_fallback(title, data, query_type, service_name)
@@ -530,19 +548,19 @@ class VaultMCPServer:
         query_type: str = "general",
         service_name: str = "",
     ):
-        """降级：发送纯文本 Slack 消息（当 blocks 格式失败时）.
+        """Fallback: send plain text Slack message (when blocks format fails).
 
         Args:
-            title: 消息标题
-            data: 查询结果数据
-            query_type: 查询类型
-            service_name: 服务名称
+            title: Message title
+            data: Query result data
+            query_type: Query type
+            service_name: Service name
         """
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             env = self.current_env.upper() if self.current_env else "N/A"
 
-            # 构建纯文本消息
+            # Build plain text message
             if query_type == "database":
                 text_parts = [
                     f"🔐 {title}",
@@ -574,7 +592,7 @@ class VaultMCPServer:
 
             message_text = "\n".join(text_parts)
 
-            # 发送纯文本消息
+            # Send plain text message
             self.slack_client.chat_postMessage(
                 channel=self.slack_user_id, text=message_text
             )
@@ -586,11 +604,11 @@ class VaultMCPServer:
             logger.error(f"Failed to send Slack fallback notification: {e}")
 
     def _aws_login(self, env_config: dict, from_web_ui: bool = False) -> bool:
-        """使用 AWS IAM 认证登录 Vault.
+        """Login to Vault using AWS IAM authentication.
 
         Args:
-            env_config: 环境配置字典
-            from_web_ui: 是否从 Web UI 调用
+            env_config: Environment configuration dictionary
+            from_web_ui: Whether called from Web UI
         """
         try:
             vault_addr = env_config["vault_addr"]
@@ -603,21 +621,21 @@ class VaultMCPServer:
             logger.info(f"Attempting to login to Vault at {vault_addr}")
             logger.info(f"Using AWS profile: {aws_profile}, region: {aws_region}")
 
-            # 步骤 1: 切换 kubectl 上下文（如果需要）
+            # Step 1: Switch kubectl context (if needed)
             if not self._switch_k8s_context(k8s_context):
                 logger.warning(
                     "Failed to switch kubectl context, but continuing anyway..."
                 )
 
-            # 创建临时的 Vault 客户端用于登录
+            # Create temporary Vault client for login
             temp_client = hvac.Client(url=vault_addr)
 
-            # 获取 AWS 凭证 - 优先使用 aws-vault
+            # Get AWS credentials - prefer aws-vault
             access_key = None
             secret_key = None
             session_token = None
 
-            # 方式 1: 尝试通过 aws-vault 获取凭证
+            # Method 1: Try to get credentials via aws-vault
             logger.info("Trying to get credentials from aws-vault...")
             aws_env = self._get_aws_credentials_via_awsvault(aws_profile, from_web_ui=from_web_ui)
 
@@ -627,7 +645,7 @@ class VaultMCPServer:
                 session_token = aws_env.get("AWS_SESSION_TOKEN")
                 logger.info("✓ Using credentials from aws-vault")
             else:
-                # 方式 2: 尝试从环境变量获取
+                # Method 2: Try to get from environment variables
                 logger.info("aws-vault not available, trying environment variables...")
                 access_key = os.environ.get("AWS_ACCESS_KEY_ID")
                 secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
@@ -648,7 +666,7 @@ class VaultMCPServer:
 
             logger.info(f"Using Vault role: {vault_role}")
 
-            # 使用 AWS IAM 认证
+            # Use AWS IAM authentication
             response = temp_client.auth.aws.iam_login(
                 access_key=access_key,
                 secret_key=secret_key,
@@ -677,8 +695,8 @@ class VaultMCPServer:
         """Synchronous version of vault_login.
         
         Args:
-            environment: 环境名称 (dev/sat/prod/local)
-            from_web_ui: 是否从 Web UI 调用（影响 MFA 弹窗方式）
+            environment: Environment name (dev/sat/prod/local)
+            from_web_ui: Whether called from Web UI (affects MFA popup method)
         """
         if environment not in self.environments:
             return json.dumps(
@@ -728,33 +746,33 @@ class VaultMCPServer:
             return json.dumps(
                 {
                     "success": False,
-                    "message": f"Failed to authenticate with {environment.upper()} Vault. Please check your AWS credentials and Vault configuration.",
+                    "message": f"Failed to authenticate with {environment.upper()} Vault. If you entered an incorrect MFA code, the cache has been cleared - please try again.",
                 }
             )
 
     async def vault_login(self, environment: str = "dev") -> str:
-        """登录到指定环境的 Vault.
+        """Login to Vault in specified environment.
 
         Args:
-            environment: 环境名称 (dev/sat/prod/local)
+            environment: Environment name (dev/sat/prod/local)
         """
         return self.login_sync(environment)
 
     async def vault_logout(self, clear_aws_cache: bool = False) -> str:
-        """登出 Vault，清空所有登录状态和缓存.
+        """Logout from Vault, clear all login state and cache.
 
         Args:
-            clear_aws_cache: 是否同时清空 aws-vault 的凭证缓存
+            clear_aws_cache: Whether to also clear aws-vault credential cache
         """
         try:
-            # 清空 Vault client
+            # Clear Vault client
             if self.vault_client:
                 logger.info("Clearing Vault client...")
                 self.vault_client = None
 
             messages = []
 
-            # 获取当前使用的 AWS profile
+            # Get current AWS profile in use
             current_profile = "unknown"
             if self.current_env and self.current_env in self.environments:
                 current_profile = self.environments[self.current_env]["aws_profile"]
@@ -763,11 +781,11 @@ class VaultMCPServer:
                 f"✓ Logged out from Vault (was using environment: {self.current_env}, AWS profile: {current_profile})"
             )
 
-            # 清空当前环境
+            # Clear current environment
             previous_env = self.current_env
             self.current_env = None
 
-            # 清空 aws-vault 的凭证缓存
+            # Clear aws-vault credential cache
             if clear_aws_cache and previous_env:
                 logger.info(
                     f"Clearing aws-vault credentials cache for profile: {current_profile}"
@@ -775,7 +793,7 @@ class VaultMCPServer:
                 try:
                     import subprocess
 
-                    # 使用 aws-vault clear 命令清空临时凭证
+                    # Use aws-vault clear command to clear temporary credentials
                     result = subprocess.run(
                         ["aws-vault", "clear", current_profile],
                         capture_output=True,
@@ -825,11 +843,11 @@ class VaultMCPServer:
 
     async def vault_kv_get(self, path: str, mount_point: str = "secret") -> str:
         """
-        读取 KV secret.
+        Read KV secret.
 
         Args:
-            path: Secret 路径（例如：myapp/config）
-            mount_point: KV mount point（默认：secret）
+            path: Secret path (e.g., myapp/config)
+            mount_point: KV mount point (default: secret)
         """
         if not self._ensure_authenticated():
             return json.dumps(
@@ -837,20 +855,20 @@ class VaultMCPServer:
             )
 
         try:
-            # 尝试 KV v2
+            # Try KV v2
             try:
                 response = self.vault_client.secrets.kv.v2.read_secret_version(
                     path=path, mount_point=mount_point
                 )
                 data = response["data"]["data"]
             except:
-                # 回退到 KV v1
+                # Fallback to KV v1
                 response = self.vault_client.secrets.kv.v1.read_secret(
                     path=path, mount_point=mount_point
                 )
                 data = response["data"]
 
-            # 发送 Slack 通知
+            # Send Slack notification
             self._send_slack_notification(
                 title=f"Vault KV Secret Retrieved",
                 data=data,
@@ -858,9 +876,9 @@ class VaultMCPServer:
                 service_name=f"{mount_point}/{path}",
             )
 
-            # 根据配置决定是否返回数据给 AI
+            # Decide whether to return data to AI based on configuration
             if not self.return_data_to_ai:
-                # 只返回 keys，不返回 values
+                # Only return keys, not values
                 keys_only = list(data.keys()) if isinstance(data, dict) else []
                 return json.dumps(
                     {
@@ -888,12 +906,12 @@ class VaultMCPServer:
         self, path: str, key: str, mount_point: str = "secret"
     ) -> str:
         """
-        读取 KV secret 中指定 key 的值.
+        Read specific key value from KV secret.
 
         Args:
-            path: Secret 路径（例如：myapp/config）
-            key: 要获取的字段名（例如：password）
-            mount_point: KV mount point（默认：secret）
+            path: Secret path (e.g., myapp/config)
+            key: Field name to retrieve (e.g., password)
+            mount_point: KV mount point (default: secret)
         """
         if not self._ensure_authenticated():
             return json.dumps(
@@ -901,20 +919,20 @@ class VaultMCPServer:
             )
 
         try:
-            # 尝试 KV v2
+            # Try KV v2
             try:
                 response = self.vault_client.secrets.kv.v2.read_secret_version(
                     path=path, mount_point=mount_point
                 )
                 data = response["data"]["data"]
             except:
-                # 回退到 KV v1
+                # Fallback to KV v1
                 response = self.vault_client.secrets.kv.v1.read_secret(
                     path=path, mount_point=mount_point
                 )
                 data = response["data"]
 
-            # 检查 key 是否存在
+            # Check if key exists
             if key not in data:
                 return json.dumps(
                     {
@@ -926,18 +944,18 @@ class VaultMCPServer:
                     indent=2,
                 )
 
-            # 获取指定 key 的值
+            # Get specified key value
             value = data[key]
 
-            # 发送 Slack 通知（只发送这一个 key 的值）
+            # Send Slack notification (only send this one key's value)
             self._send_slack_notification(
                 title=f"Vault Secret Key Retrieved",
-                data={key: value},  # 只发送请求的 key
+                data={key: value},  # Only send requested key
                 query_type="kv",
                 service_name=f"{mount_point}/{path}#{key}",
             )
 
-            # 根据配置决定是否返回数据给 AI
+            # Decide whether to return data to AI based on configuration
             if not self.return_data_to_ai:
                 return json.dumps(
                     {
@@ -973,11 +991,11 @@ class VaultMCPServer:
 
     async def vault_kv_list(self, path: str = "", mount_point: str = "secret") -> str:
         """
-        列出 KV secrets 路径.
+        List KV secrets paths.
 
         Args:
-            path: 要列出的路径（例如：myapp/）
-            mount_point: KV mount point（默认：secret）
+            path: Path to list (e.g., myapp/)
+            mount_point: KV mount point (default: secret)
         """
         if not self._ensure_authenticated():
             return json.dumps(
@@ -985,13 +1003,13 @@ class VaultMCPServer:
             )
 
         try:
-            # 尝试 KV v2
+            # Try KV v2
             try:
                 response = self.vault_client.secrets.kv.v2.list_secrets(
                     path=path, mount_point=mount_point
                 )
             except:
-                # 回退到 KV v1
+                # Fallback to KV v1
                 response = self.vault_client.secrets.kv.v1.list_secrets(
                     path=path, mount_point=mount_point
                 )
@@ -1010,11 +1028,11 @@ class VaultMCPServer:
 
     async def vault_read(self, path: str) -> str:
         """
-        通用 Vault 读取方法.
-        用于读取数据库凭证、证书等动态 secrets.
+        Generic Vault read method.
+        Used for reading database credentials, certificates and other dynamic secrets.
 
         Args:
-            path: 完整路径（例如：database/creds/my-role）
+            path: Full path (e.g., database/creds/my-role)
         """
         if not self._ensure_authenticated():
             return json.dumps(
@@ -1033,11 +1051,11 @@ class VaultMCPServer:
                     }
                 )
 
-            # 判断是否是数据库凭证
+            # Determine if this is database credentials
             is_database_creds = "database/creds" in path or "database/roles" in path
             query_type = "database" if is_database_creds else "general"
 
-            # 发送 Slack 通知
+            # Send Slack notification
             self._send_slack_notification(
                 title=f"Vault Secret Retrieved",
                 data=response["data"],
@@ -1045,9 +1063,9 @@ class VaultMCPServer:
                 service_name=path,
             )
 
-            # 根据配置决定是否返回数据给 AI
+            # Decide whether to return data to AI based on configuration
             if not self.return_data_to_ai:
-                # 只返回 keys，不返回 values
+                # Only return keys, not values
                 keys_only = (
                     list(response["data"].keys())
                     if isinstance(response["data"], dict)
@@ -1061,7 +1079,7 @@ class VaultMCPServer:
                     "slack_notification_sent": self.slack_enabled,
                     "available_keys": keys_only,
                 }
-                # 只返回租约信息，不返回敏感数据
+                # Only return lease info, not sensitive data
                 if response.get("lease_id"):
                     result["lease_id"] = response.get("lease_id")
                     result["lease_duration"] = response.get("lease_duration")
@@ -1085,10 +1103,10 @@ class VaultMCPServer:
 
     async def vault_list(self, path: str) -> str:
         """
-        列出指定路径.
+        List specified path.
 
         Args:
-            path: 要列出的路径
+            path: Path to list
         """
         if not self._ensure_authenticated():
             return json.dumps(
@@ -1112,7 +1130,7 @@ class VaultMCPServer:
 
     async def vault_web_ui_open(self) -> str:
         """
-        打开 Vault Web UI 进行交互式管理.
+        Open Vault Web UI for interactive management.
         
         Returns:
             JSON string with success status and URL
@@ -1151,12 +1169,12 @@ class VaultMCPServer:
 
 
 async def main():
-    """主函数：启动 MCP 服务器."""
+    """Main function: Start MCP server."""
     logger.info("Starting Vault MCP Server...")
 
     vault_server = VaultMCPServer()
     
-    # # 自动启动 Web UI（如果可用）
+    # # Auto-start Web UI (if available)
     # if WEB_UI_AVAILABLE and vault_server.web_ui is None:
     #     try:
     #         vault_server.web_ui = VaultWebUI(vault_server)
@@ -1167,25 +1185,25 @@ async def main():
     
     server = Server("vault-mcp")
 
-    # 注册资源（空列表，因为我们不使用 resources）
+    # Register resources (empty list as we don't use resources)
     @server.list_resources()
     async def list_resources():
         return []
 
-    # 注册工具
+    # Register tools
     @server.list_tools()
     async def list_tools() -> list[Tool]:
         return [
             Tool(
                 name="vault_login",
-                description="使用 AWS IAM 认证登录到指定环境的 Vault。请在参数中指定要登录的环境（dev/sat/prod/local）。",
+                description="Login to Vault in specified environment using AWS IAM authentication. Specify the environment (dev/sat/prod/local) in parameters.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "environment": {
                             "type": "string",
                             "enum": ["dev", "sat", "prod", "local"],
-                            "description": "要登录的环境：dev（开发）、sat（测试）、prod（生产）、local（本地容器）",
+                            "description": "Environment to login to: dev (development), sat (testing), prod (production), local (local container)",
                             "default": "dev",
                         }
                     },
@@ -1193,13 +1211,13 @@ async def main():
             ),
             Tool(
                 name="vault_logout",
-                description="登出 Vault，清空当前的登录状态。可选择是否同时清空 aws-vault 的凭证缓存（清空后下次登录需重新输入 MFA）。",
+                description="Logout from Vault and clear current login state. Optionally clear aws-vault credential cache (will require MFA on next login).",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "clear_aws_cache": {
                             "type": "boolean",
-                            "description": "是否同时清空 aws-vault 的凭证缓存。true=清空（下次登录需 MFA），false=保留（默认）",
+                            "description": "Whether to also clear aws-vault credential cache. true=clear (next login requires MFA), false=keep (default)",
                             "default": False,
                         }
                     },
@@ -1207,17 +1225,17 @@ async def main():
             ),
             Tool(
                 name="vault_kv_get",
-                description="从 Vault KV 存储中读取完整的 secret（所有字段）。适用于读取应用配置、API keys 等静态 secrets。",
+                description="Read complete secret (all fields) from Vault KV storage. Suitable for reading application config, API keys and other static secrets.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "Secret 的路径，例如：myapp/config 或 myapp/prod/database",
+                            "description": "Secret path, e.g., myapp/config or myapp/prod/database",
                         },
                         "mount_point": {
                             "type": "string",
-                            "description": "KV secrets engine 的 mount point",
+                            "description": "KV secrets engine mount point",
                             "default": "secret",
                         },
                     },
@@ -1226,21 +1244,21 @@ async def main():
             ),
             Tool(
                 name="vault_kv_get_key",
-                description="从 Vault KV secret 中读取指定的单个字段。当只需要获取某个特定字段（如密码、API key）而不需要整个 secret 时使用。",
+                description="Read specific single field from Vault KV secret. Use when you only need a specific field (e.g., password, API key) without the entire secret.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "Secret 的路径，例如：myapp/config",
+                            "description": "Secret path, e.g., myapp/config",
                         },
                         "key": {
                             "type": "string",
-                            "description": "要获取的字段名，例如：password、api_key、username",
+                            "description": "Field name to retrieve, e.g., password, api_key, username",
                         },
                         "mount_point": {
                             "type": "string",
-                            "description": "KV secrets engine 的 mount point",
+                            "description": "KV secrets engine mount point",
                             "default": "secret",
                         },
                     },
@@ -1249,18 +1267,18 @@ async def main():
             ),
             Tool(
                 name="vault_kv_list",
-                description="列出 KV 存储中指定路径下的所有 secrets。用于浏览和发现 secrets。",
+                description="List all secrets under specified path in KV storage. Used for browsing and discovering secrets.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "要列出的路径，例如：myapp/ 或留空列出根路径",
+                            "description": "Path to list, e.g., myapp/ or leave empty to list root path",
                             "default": "",
                         },
                         "mount_point": {
                             "type": "string",
-                            "description": "KV secrets engine 的 mount point",
+                            "description": "KV secrets engine mount point",
                             "default": "secret",
                         },
                     },
@@ -1268,13 +1286,13 @@ async def main():
             ),
             Tool(
                 name="vault_read",
-                description="通用 Vault 读取方法。用于读取动态 secrets，如数据库凭证（database/creds/role）、AWS 凭证、证书等。",
+                description="Generic Vault read method. Used for reading dynamic secrets such as database credentials (database/creds/role), AWS credentials, certificates, etc.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "完整的 Vault 路径，例如：database/creds/my-role 或 aws/creds/my-role",
+                            "description": "Full Vault path, e.g., database/creds/my-role or aws/creds/my-role",
                         }
                     },
                     "required": ["path"],
@@ -1282,13 +1300,13 @@ async def main():
             ),
             Tool(
                 name="vault_list",
-                description="列出指定路径下的所有子路径。这是一个通用的列表方法，可以用于任何 Vault 路径。",
+                description="List all sub-paths under specified path. This is a generic list method that can be used for any Vault path.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "要列出的路径，例如：database/roles 或 pki/certs",
+                            "description": "Path to list, e.g., database/roles or pki/certs",
                         }
                     },
                     "required": ["path"],
@@ -1296,7 +1314,7 @@ async def main():
             ),
             Tool(
                 name="vault_web_ui_open",
-                description="打开 Vault Web UI 进行交互式管理。支持浏览、创建、编辑 secrets，提供美观的图形界面。",
+                description="Open Vault Web UI for interactive management. Supports browsing, creating, editing secrets with a beautiful graphical interface.",
                 inputSchema={
                     "type": "object",
                     "properties": {},
@@ -1346,7 +1364,7 @@ async def main():
             logger.error(f"Error executing tool {name}: {e}", exc_info=True)
             return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
-    # 启动服务器
+    # Start server
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream, write_stream, server.create_initialization_options()
