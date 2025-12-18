@@ -219,6 +219,86 @@ class VaultMCPServer:
             logger.error(f"Error switching kubectl context: {e}")
             return False
 
+    def _find_aws_vault_path(self) -> Optional[str]:
+        """Find aws-vault executable path (cross-platform).
+        
+        Returns:
+            Full path to aws-vault or None if not found
+        """
+        import platform
+        import shutil
+        
+        system = platform.system()
+        
+        # Try using shutil.which first (works on all platforms)
+        executable_name = "aws-vault.exe" if system == "Windows" else "aws-vault"
+        aws_vault_path = shutil.which(executable_name)
+        if aws_vault_path and os.path.isfile(aws_vault_path):
+            return aws_vault_path
+        
+        # Platform-specific common paths
+        if system == "Windows":
+            # Windows common installation paths
+            common_paths = [
+                os.path.expandvars(r"%LOCALAPPDATA%\Programs\aws-vault\aws-vault.exe"),
+                os.path.expandvars(r"%PROGRAMFILES%\aws-vault\aws-vault.exe"),
+                os.path.expandvars(r"%PROGRAMFILES(X86)%\aws-vault\aws-vault.exe"),
+                os.path.expandvars(r"%USERPROFILE%\bin\aws-vault.exe"),
+                r"C:\ProgramData\chocolatey\bin\aws-vault.exe",  # Chocolatey install
+            ]
+            
+            # Check common paths
+            for path in common_paths:
+                if os.path.isfile(path):
+                    return path
+            
+            # Try using 'where' command on Windows
+            try:
+                result = subprocess.run(
+                    ["where", "aws-vault"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                    shell=False
+                )
+                if result.returncode == 0:
+                    path = result.stdout.strip().split('\n')[0]  # Get first match
+                    if path and os.path.isfile(path):
+                        return path
+            except:
+                pass
+                
+        else:
+            # Unix/Linux/macOS common paths
+            common_paths = [
+                "/opt/homebrew/bin/aws-vault",  # Homebrew on Apple Silicon
+                "/usr/local/bin/aws-vault",      # Homebrew on Intel Mac
+                "/usr/bin/aws-vault",            # System install
+                os.path.expanduser("~/.local/bin/aws-vault"),  # User install
+            ]
+            
+            # Check common paths
+            for path in common_paths:
+                if os.path.isfile(path) and os.access(path, os.X_OK):
+                    return path
+            
+            # Try using 'which' command
+            try:
+                result = subprocess.run(
+                    ["which", "aws-vault"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    path = result.stdout.strip()
+                    if path and os.path.isfile(path):
+                        return path
+            except:
+                pass
+        
+        return None
+
     def _get_aws_credentials_via_awsvault(self, aws_profile: str, from_web_ui: bool = False):
         """Proactively obtain AWS credentials via aws-vault.
 
@@ -227,6 +307,14 @@ class VaultMCPServer:
             from_web_ui: Whether called from Web UI (requires GUI popup window)
         """
         import platform
+        
+        # Find aws-vault executable
+        aws_vault_path = self._find_aws_vault_path()
+        if not aws_vault_path:
+            logger.warning("aws-vault executable not found in common paths")
+            return None
+        
+        logger.info(f"Using aws-vault at: {aws_vault_path}")
         
         try:
             logger.info(
@@ -237,7 +325,7 @@ class VaultMCPServer:
             )
 
             # Execute aws-vault export to get credentials (may require MFA input)
-            cmd = ["aws-vault", "export", aws_profile, "--format=json"]
+            cmd = [aws_vault_path, "export", aws_profile, "--format=json"]
             system = platform.system()
             
             # When called from Web UI, need special handling to show MFA GUI prompts
@@ -311,7 +399,7 @@ class VaultMCPServer:
                 logger.info(f"Clearing aws-vault cache for profile: {aws_profile} to allow retry...")
                 try:
                     clear_result = subprocess.run(
-                        ["aws-vault", "clear", aws_profile],
+                        [aws_vault_path, "clear", aws_profile],
                         capture_output=True,
                         text=True,
                         timeout=5,
@@ -793,28 +881,34 @@ class VaultMCPServer:
                 try:
                     import subprocess
 
-                    # Use aws-vault clear command to clear temporary credentials
-                    result = subprocess.run(
-                        ["aws-vault", "clear", current_profile],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
-                    if result.returncode == 0:
-                        logger.info(
-                            f"✓ Cleared aws-vault temporary credentials for {current_profile}"
-                        )
-                        messages.append(
-                            f"✓ Cleared AWS temporary credentials for profile: {current_profile}"
-                        )
-                        messages.append("   Next login will require MFA")
+                    # Find aws-vault executable
+                    aws_vault_path = self._find_aws_vault_path()
+                    if not aws_vault_path:
+                        logger.warning("aws-vault executable not found")
+                        messages.append("⚠️  Could not find aws-vault executable")
                     else:
-                        logger.warning(
-                            f"Failed to clear aws-vault cache: {result.stderr}"
+                        # Use aws-vault clear command to clear temporary credentials
+                        result = subprocess.run(
+                            [aws_vault_path, "clear", current_profile],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         )
-                        messages.append(
-                            f"⚠️  Could not clear AWS cache: {result.stderr.strip()}"
-                        )
+                        if result.returncode == 0:
+                            logger.info(
+                                f"✓ Cleared aws-vault temporary credentials for {current_profile}"
+                            )
+                            messages.append(
+                                f"✓ Cleared AWS temporary credentials for profile: {current_profile}"
+                            )
+                            messages.append("   Next login will require MFA")
+                        else:
+                            logger.warning(
+                                f"Failed to clear aws-vault cache: {result.stderr}"
+                            )
+                            messages.append(
+                                f"⚠️  Could not clear AWS cache: {result.stderr.strip()}"
+                            )
                 except Exception as e:
                     logger.warning(f"Error clearing aws-vault cache: {e}")
                     messages.append(f"⚠️  Could not clear AWS cache: {str(e)}")
