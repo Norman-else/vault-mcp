@@ -2106,6 +2106,78 @@
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
         
+        .btn-sync-mcp {
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background-color: #10b981;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .btn-sync-mcp:hover:not(:disabled) {
+            background-color: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-sync-mcp:disabled,
+        .btn-sync-mcp-disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-sync-mcp:disabled:hover,
+        .btn-sync-mcp-disabled:hover {
+            background-color: #9ca3af;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Custom tooltip for sync button - using data-tooltip to avoid double tooltips */
+        .btn-sync-mcp[data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 400;
+            white-space: pre-wrap;
+            max-width: 350px;
+            text-align: left;
+            z-index: 1000;
+            pointer-events: none;
+            line-height: 1.5;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-sync-mcp[data-tooltip]:hover::before {
+            content: '';
+            position: absolute;
+            bottom: calc(100% + 2px);
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            pointer-events: none;
+        }
+
         .btn-regenerate {
             flex: 1;
             display: inline-flex;
@@ -2117,12 +2189,12 @@
             color: var(--text-primary);
             padding: 12px 20px;
             border-radius: var(--radius-sm);
-            font-weight: 600;
             font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
         }
-        
+
         .btn-regenerate:hover {
             background: var(--bg-hover);
             border-color: var(--text-muted);
@@ -4868,8 +4940,35 @@
             }
         }
         
-        function displayCredentials(roleName, creds) {
+        async function displayCredentials(roleName, creds) {
             const content = document.getElementById('dbCredsContent');
+
+            // Check MCP config availability
+            let mcpConfigAvailable = false;
+            let mcpTooltip = 'Checking PostgreSQL MCP config...';
+
+            try {
+                const mcpCheckResponse = await fetch('/api/database/check-mcp-config');
+                const mcpCheckData = await mcpCheckResponse.json();
+
+                if (mcpCheckData.success && mcpCheckData.exists) {
+                    mcpConfigAvailable = true;
+                    mcpTooltip = '✓ Click to sync credentials to PostgreSQL MCP\nConfig file: ' + mcpCheckData.path;
+                } else if (!mcpCheckData.exists) {
+                    mcpTooltip = '✗ PostgreSQL MCP config file not found\n\nExpected location:\n' + mcpCheckData.path + '\n\nPlease create the config file to enable sync.';
+                } else if (mcpCheckData.error) {
+                    mcpTooltip = '✗ PostgreSQL MCP config error\n\n' + mcpCheckData.error;
+                } else {
+                    mcpTooltip = '✗ PostgreSQL MCP config file is not available';
+                }
+            } catch (error) {
+                console.error('Error checking MCP config:', error);
+                mcpTooltip = '✗ Failed to check PostgreSQL MCP config\n\nPlease check if the server is running correctly.';
+            }
+
+            const syncButtonDisabled = mcpConfigAvailable ? '' : 'disabled';
+            const syncButtonClass = mcpConfigAvailable ? 'btn-sync-mcp' : 'btn-sync-mcp btn-sync-mcp-disabled';
+
             content.innerHTML = `
                 <div class="success-banner">
                     <svg class="icon" style="width: 20px; height: 20px;" viewBox="0 0 24 24">
@@ -4878,7 +4977,7 @@
                     </svg>
                     <span>Credentials generated successfully. These are temporary credentials that will expire automatically.</span>
                 </div>
-                
+
                 <div class="creds-card">
                     <div class="creds-card-header">
                         <div class="creds-card-title">
@@ -4904,7 +5003,7 @@
                                 •••••••••••••••••••••••
                             </div>
                         </div>
-                        
+
                         <div class="creds-field">
                             <div class="creds-field-label">
                                 <span>Password</span>
@@ -4928,6 +5027,15 @@
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                             </svg>
                             Copy All Credentials
+                        </button>
+                        <button class="${syncButtonClass}"
+                                onclick="syncToPostgreSQLMCP('${escapeHtml(roleName)}', '${escapeHtml(creds.username)}', '${escapeHtml(creds.password)}')"
+                                ${syncButtonDisabled}
+                                data-tooltip="${escapeHtml(mcpTooltip)}">
+                            <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24">
+                                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"></path>
+                            </svg>
+                            Sync to PostgreSQL MCP
                         </button>
                         <button class="btn-regenerate" onclick="generateCredentials('${escapeHtml(roleName)}')">
                             <svg class="icon" style="width: 18px; height: 18px;" viewBox="0 0 24 24">
@@ -4965,6 +5073,45 @@
             }).catch(() => {
                 showToast('Failed to copy credentials', 'error');
             });
+        }
+
+        async function syncToPostgreSQLMCP(roleName, username, password) {
+            // Check if button is disabled (shouldn't happen if UI is correct, but safety check)
+            const syncButton = event?.target?.closest('.btn-sync-mcp');
+            if (syncButton?.disabled) {
+                showToast('PostgreSQL MCP config file is not available', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/database/sync-to-mcp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        role_name: roleName,
+                        username: username,
+                        password: password
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Show different messages based on action
+                    if (data.action === 'created') {
+                        showToast(`✓ New environment "${data.environment}" created and synced`);
+                    } else {
+                        showToast(`✓ Credentials synced to "${data.environment}"`);
+                    }
+                } else {
+                    showToast(data.error || 'Failed to sync credentials', 'error');
+                }
+            } catch (error) {
+                console.error('Error syncing to PostgreSQL MCP:', error);
+                showToast('Error syncing credentials', 'error');
+            }
         }
 
         // Initialize
