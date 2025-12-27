@@ -5101,9 +5101,9 @@
                 if (data.success) {
                     // Show different messages based on action
                     if (data.action === 'created') {
-                        showToast(`✓ New environment "${data.environment}" created and synced`);
+                        showToast(`New environment "${data.environment}" created and synced`);
                     } else {
-                        showToast(`✓ Credentials synced to "${data.environment}"`);
+                        showToast(`Credentials synced to "${data.environment}"`);
                     }
                 } else {
                     showToast(data.error || 'Failed to sync credentials', 'error');
