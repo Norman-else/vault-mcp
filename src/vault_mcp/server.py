@@ -1244,6 +1244,12 @@ class VaultMCPServer:
                 self.web_ui = VaultWebUI(self)
                 self.web_ui.start()
                 logger.info("Web UI server started")
+            elif not self.web_ui.is_running:
+                # Web UI exists but is not running (e.g., after timeout shutdown)
+                # Restart it
+                logger.info("Web UI was stopped, restarting...")
+                self.web_ui.start()
+                logger.info("Web UI server restarted")
             
             # Open browser
             url = self.web_ui.open_browser()
