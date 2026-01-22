@@ -379,7 +379,75 @@ class VaultWebUI:
                     'success': False,
                     'error': str(e)
                 }), 500
-        
+
+        @self.app.route('/api/secrets/delete-key', methods=['POST'])
+        def delete_key():
+            """Delete a key from a secret."""
+            try:
+                data = request.get_json()
+                path = data.get('path')
+                mount_point = data.get('mount_point', 'secret')
+                key = data.get('key')
+
+                if not path or not key:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Path and key are required'
+                    }), 400
+
+                if not self.vault_server._ensure_authenticated():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Not authenticated'
+                    }), 401
+
+                # Read existing secret
+                existing_data = {}
+                try:
+                    response = self.vault_server.vault_client.secrets.kv.v2.read_secret_version(
+                        path=path,
+                        mount_point=mount_point
+                    )
+                    existing_data = response['data']['data']
+                except Exception as e:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Secret not found: {str(e)}'
+                    }), 404
+
+                # Check if key exists
+                if key not in existing_data:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Key "{key}" not found in secret'
+                    }), 404
+
+                # Delete the key
+                del existing_data[key]
+
+                # Write back (even if empty)
+                self.vault_server.vault_client.secrets.kv.v2.create_or_update_secret(
+                    path=path,
+                    secret=existing_data,
+                    mount_point=mount_point
+                )
+
+                # Audit log
+                logger.info(f"Deleted key from secret: {mount_point}/{path}, key: {key}")
+
+                return jsonify({
+                    'success': True,
+                    'message': f'Key "{key}" deleted from {mount_point}/{path}',
+                    'data': existing_data
+                })
+
+            except Exception as e:
+                logger.error(f"Error deleting key: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
         @self.app.route('/api/secrets/search', methods=['GET'])
         def search_secrets():
             """Search secrets by path and key name."""
