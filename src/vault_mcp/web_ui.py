@@ -4,6 +4,8 @@ import os
 import sys
 import json
 import logging
+import random
+import socket
 import threading
 import time
 import webbrowser
@@ -50,8 +52,16 @@ class VaultWebUI:
         CORS(self.app)  # Enable CORS for API requests
         
         self.is_running = False
-        self.port = int(os.getenv('WEB_UI_PORT', '8765'))
         self.host = os.getenv('WEB_UI_HOST', '0.0.0.0')
+
+        # 端口配置：优先使用环境变量，否则使用随机端口
+        env_port = os.getenv('WEB_UI_PORT')
+        if env_port:
+            self.port = int(env_port)
+            self._use_random_port = False
+        else:
+            self.port = None  # 延迟到 start() 时分配
+            self._use_random_port = True
         
         # Timeout management
         self.last_access_time = time.time()
@@ -63,7 +73,24 @@ class VaultWebUI:
         self._shutdown_event = threading.Event()
         
         self._setup_routes()
-    
+
+    def _check_port_available(self, port: int) -> bool:
+        """检查端口是否可用"""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind((self.host, port))
+            sock.close()
+            return True
+        except OSError:
+            return False
+
+    def _find_available_port(self) -> int:
+        """找到一个可用的随机端口（范围 40000-49999）"""
+        while True:
+            port = random.randint(40000, 49999)
+            if self._check_port_available(port):
+                return port
+
     def _setup_routes(self):
         """Setup Flask routes."""
         
@@ -983,11 +1010,20 @@ class VaultWebUI:
         if self.is_running:
             logger.info("Web UI is already running")
             return
-        
+
+        # 分配端口
+        if self._use_random_port or self.port is None:
+            self.port = self._find_available_port()
+            logger.info(f"Using random port: {self.port}")
+        else:
+            # 检查指定端口是否可用
+            if not self._check_port_available(self.port):
+                raise RuntimeError(f"Port {self.port} is already in use")
+
         # Reset shutdown event and access time
         self._shutdown_event.clear()
         self.last_access_time = time.time()
-        
+
         def run_server():
             # Use make_server instead of app.run() to avoid Flask CLI messages
             # This completely bypasses Flask's CLI output system
