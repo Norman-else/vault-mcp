@@ -3869,10 +3869,10 @@
                                 <button class="btn-icon" title="Edit Key" onclick="editKey('${key}')">
                                     <svg class="icon" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                                 </button>
-                                <button class="btn-icon" title="Toggle Visibility" onclick="toggleValue(this, '${key}', '${escapedValue}')">
+                                <button class="btn-icon" title="Toggle Visibility" onclick="toggleValue(this, '${key}')">
                                     <svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                                 </button>
-                                <button class="btn-icon" title="Copy Value" onclick="copyValue('${escapedValue}')">
+                                <button class="btn-icon" title="Copy Value" data-copy-value="${escapedValue}" onclick="copyValueFromData(this)">
                                     <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                 </button>
                                 <button class="btn-icon btn-delete" title="Delete Key" onclick="showDeleteConfirmModal('${key}')">
@@ -4373,11 +4373,13 @@
             });
         }
 
-        function toggleValue(btn, key, value) {
+        function toggleValue(btn, key) {
             const el = document.getElementById(`val-${key}`);
             const icon = btn.querySelector('svg');
-            
+
             if (el.classList.contains('value-masked')) {
+                // Read value from data attribute to safely handle JSON and special characters
+                const value = el.getAttribute('data-full-value');
                 el.textContent = value;
                 el.classList.remove('value-masked');
                 el.classList.add('value-revealed');
@@ -4393,6 +4395,14 @@
         }
 
         function copyValue(value) {
+            navigator.clipboard.writeText(value).then(() => {
+                showToast('Copied to clipboard');
+            });
+        }
+
+        function copyValueFromData(btn) {
+            // Read value from data attribute to safely handle JSON and special characters
+            const value = btn.getAttribute('data-copy-value');
             navigator.clipboard.writeText(value).then(() => {
                 showToast('Copied to clipboard');
             });
