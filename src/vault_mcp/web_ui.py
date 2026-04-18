@@ -475,6 +475,46 @@ class VaultWebUI:
                     'error': str(e)
                 }), 500
 
+        @self.app.route('/api/secrets/delete', methods=['POST'])
+        def delete_secret():
+            """Delete an entire secret path and all its versions."""
+            try:
+                data = request.get_json()
+                path = data.get('path')
+                mount_point = data.get('mount_point', 'secret')
+
+                if not path:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Path is required'
+                    }), 400
+
+                if not self.vault_server._ensure_authenticated():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Not authenticated'
+                    }), 401
+
+                self.vault_server.vault_client.secrets.kv.v2.delete_metadata_and_all_versions(
+                    path=path,
+                    mount_point=mount_point
+                )
+
+                # Audit log
+                logger.info(f"Deleted entire secret path: {mount_point}/{path}")
+
+                return jsonify({
+                    'success': True,
+                    'message': f'Secret "{mount_point}/{path}" and all its versions have been permanently deleted.'
+                })
+
+            except Exception as e:
+                logger.error(f"Error deleting secret: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
         @self.app.route('/api/secrets/search', methods=['GET'])
         def search_secrets():
             """Search secrets by path and key name."""

@@ -767,7 +767,7 @@ class VaultMCPServer:
             self._init_vault_client(token, vault_addr)
 
             logger.info("Successfully authenticated with Vault using AWS IAM")
-            return True
+            return None
 
         except Exception as e:
             logger.error(f"AWS login failed: {e}")
@@ -777,7 +777,7 @@ class VaultMCPServer:
             import traceback
 
             logger.error(f"Traceback: {traceback.format_exc()}")
-            return False
+            return str(e)
 
     def login_sync(self, environment: str = "dev", from_web_ui: bool = False) -> str:
         """Synchronous version of vault_login.
@@ -820,7 +820,8 @@ class VaultMCPServer:
                 )
 
         # AWS IAM login for other environments
-        if self._aws_login(env_config, from_web_ui=from_web_ui):
+        error = self._aws_login(env_config, from_web_ui=from_web_ui)
+        if error is None:
             self.current_env = environment
             return json.dumps(
                 {
@@ -834,9 +835,356 @@ class VaultMCPServer:
             return json.dumps(
                 {
                     "success": False,
-                    "message": f"Failed to authenticate with {environment.upper()} Vault. If you entered an incorrect MFA code, the cache has been cleared - please try again.",
+                    "message": f"Failed to authenticate with {environment.upper()} Vault: {error}",
                 }
             )
+
+    def _find_slack_users(self, name: str) -> list:
+        """Search Slack workspace for users by display name, real name, or username.
+
+        Args:
+            name: The name to search for (case-insensitive partial match)
+
+        Returns:
+            List of matching users, each a dict with 'id', 'real_name', 'display_name'
+        """
+        if not self.slack_client:
+            return []
+
+        name_lower = name.lower().strip()
+        matches = []
+        try:
+            cursor = None
+            while True:
+                kwargs = {"limit": 200}
+                if cursor:
+                    kwargs["cursor"] = cursor
+
+                response = self.slack_client.users_list(**kwargs)
+                members = response.get("members", [])
+
+                for member in members:
+                    if member.get("deleted") or member.get("is_bot"):
+                        continue
+                    profile = member.get("profile", {})
+                    candidates = [
+                        member.get("name", ""),
+                        profile.get("display_name", ""),
+                        profile.get("real_name", ""),
+                        profile.get("display_name_normalized", ""),
+                        profile.get("real_name_normalized", ""),
+                    ]
+                    if any(name_lower in c.lower() for c in candidates if c):
+                        matches.append(
+                            {
+                                "id": member["id"],
+                                "real_name": profile.get("real_name", ""),
+                                "display_name": profile.get("display_name", "")
+                                or member.get("name", ""),
+                            }
+                        )
+
+                next_cursor = (
+                    response.get("response_metadata", {}).get("next_cursor", "")
+                )
+                if not next_cursor:
+                    break
+                cursor = next_cursor
+
+        except SlackApiError as e:
+            logger.error(f"Slack API error while searching users: {e.response['error']}")
+        except Exception as e:
+            logger.error(f"Error searching Slack users: {e}")
+
+        return matches
+
+    def _find_slack_user_id(self, name: str) -> Optional[str]:
+        """Search Slack workspace for a user by display name, real name, or username.
+
+        Returns the user ID if exactly one match is found, otherwise None.
+        Use _find_slack_users() directly when you need to handle multiple matches.
+        """
+        matches = self._find_slack_users(name)
+        if len(matches) == 1:
+            return matches[0]["id"]
+        return None
+
+    def _get_slack_user_real_name(self, user_id: str) -> str:
+        """Look up a Slack user's real name by their user ID."""
+        if not user_id or not self.slack_client:
+            return os.getenv("USER", "Unknown")
+        try:
+            resp = self.slack_client.users_info(user=user_id)
+            profile = resp["user"]["profile"]
+            return (
+                profile.get("real_name")
+                or profile.get("display_name")
+                or os.getenv("USER", "Unknown")
+            )
+        except Exception:
+            return os.getenv("USER", "Unknown")
+
+    def _post_credentials_audit(
+        self,
+        env: str,
+        data: dict,
+        recipient_name: str,
+        audit_timestamp: str,
+    ) -> None:
+        """Post an audit message to the credentials audit channel."""
+        audit_channel = os.getenv("SLACK_AUDIT_CHANNEL_ID", "C08GHV4ELRX")
+        if not self.slack_client or not audit_channel:
+            return
+
+        sender_name = self._get_slack_user_real_name(self.slack_user_id)
+        cred_lines = "\n".join(f"> {k}: {v}" for k, v in data.items())
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "🚀 New Database Credentials Sent",
+                    "emoji": True,
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Env:* `{env.lower()}`",
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": cred_lines,
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"and sent to {recipient_name} at {audit_timestamp} "
+                            f"by {sender_name}."
+                        ),
+                    }
+                ],
+            },
+        ]
+
+        try:
+            self.slack_client.chat_postMessage(
+                channel=audit_channel,
+                blocks=blocks,
+                text=f"New credentials sent to {recipient_name} by {sender_name}",
+            )
+            logger.info(f"✓ Audit message posted to channel {audit_channel}")
+        except Exception as e:
+            logger.warning(f"Failed to post audit message to channel {audit_channel}: {e}")
+
+    async def vault_share_secret(
+        self,
+        path: str,
+        slack_user: str,
+        mount_point: str = "secret",
+        secret_type: str = "kv",
+    ) -> str:
+        """Fetch a Vault secret and send it directly to a Slack user as a DM.
+
+        The secret value is NEVER returned to the AI — only success/failure status.
+
+        Args:
+            path: Vault secret path.
+                  For kv type: KV path under mount_point (e.g., item-management-service)
+                  For db type: full database creds path (e.g., database/creds/warehouse-management-service)
+            slack_user: Slack user display name, real name, or username
+            mount_point: KV mount point (default: secret), only used when secret_type is 'kv'
+            secret_type: 'kv' for KV secrets engine (default), 'db' for dynamic database credentials
+        """
+        if not self._ensure_authenticated():
+            return json.dumps(
+                {"success": False, "error": "Not authenticated. Please login first."}
+            )
+
+        if not SLACK_AVAILABLE or not self.slack_client:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "Slack is not configured. Set SLACK_ENABLED=true and "
+                        "SLACK_BOT_TOKEN in environment variables."
+                    ),
+                }
+            )
+
+        # Step 1: Resolve Slack user ID
+        matched_users = self._find_slack_users(slack_user)
+        if len(matched_users) == 0:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"Slack user '{slack_user}' not found in workspace.",
+                }
+            )
+        if len(matched_users) > 1:
+            candidates = [
+                f"{u['real_name']} (@{u['display_name']})" for u in matched_users
+            ]
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        f"Multiple Slack users matched '{slack_user}'. "
+                        "Please be more specific and choose one of the following:"
+                    ),
+                    "candidates": candidates,
+                }
+            )
+        target_user_id = matched_users[0]["id"]
+
+        # Step 2: Fetch secret from Vault (data never leaves this method to AI)
+        display_path = path if secret_type == "db" else f"{mount_point}/{path}"
+        try:
+            if secret_type == "db":
+                # Dynamic credentials via generic read (e.g., database/creds/<role>)
+                response = self.vault_client.read(path)
+                if response is None:
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "error": "Path not found or no data returned",
+                            "path": path,
+                        }
+                    )
+                data = response["data"]
+            else:
+                # KV secrets engine
+                try:
+                    response = self.vault_client.secrets.kv.v2.read_secret_version(
+                        path=path, mount_point=mount_point
+                    )
+                    data = response["data"]["data"]
+                except Exception:
+                    response = self.vault_client.secrets.kv.v1.read_secret(
+                        path=path, mount_point=mount_point
+                    )
+                    data = response["data"]
+        except Exception as e:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"Failed to retrieve secret from Vault: {str(e)}",
+                    "path": display_path,
+                }
+            )
+
+        # Step 3: Send secret directly to the target Slack user
+        try:
+            now = datetime.now()
+            timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+            audit_timestamp = now.strftime("%-b %-d, %Y, %-I:%M:%S %p")
+            env = self.current_env.upper() if self.current_env else "N/A"
+            formatted_data = self._safe_format_data(data)
+
+            blocks = [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"🔐 Vault Secret: {display_path}",
+                        "emoji": True,
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*Environment:*\n{env}"},
+                        {"type": "mrkdwn", "text": f"*Time:*\n{timestamp}"},
+                    ],
+                },
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"```\n{formatted_data}\n```",
+                    },
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "⚠️ _This message contains sensitive information. Please handle it securely and delete it after use._",
+                        }
+                    ],
+                },
+            ]
+
+            try:
+                self.slack_client.chat_postMessage(
+                    channel=target_user_id,
+                    blocks=blocks,
+                    text=f"Vault secret {display_path}",
+                )
+            except SlackApiError as e:
+                if "invalid_blocks" in str(e) or "invalid_text" in str(e):
+                    # Fallback to plain text
+                    self.slack_client.chat_postMessage(
+                        channel=target_user_id,
+                        text=(
+                            f"🔐 Vault Secret: {display_path}\n"
+                            f"Environment: {env} | Time: {timestamp}\n\n"
+                            f"```\n{formatted_data}\n```\n\n"
+                            "⚠️ This message contains sensitive information. "
+                            "Please handle it securely."
+                        ),
+                    )
+                else:
+                    raise
+
+            # Post audit message to credentials audit channel (db type only)
+            if secret_type == "db":
+                recipient_name = matched_users[0].get("real_name") or slack_user
+                self._post_credentials_audit(
+                    env=env,
+                    data=data,
+                    recipient_name=recipient_name,
+                    audit_timestamp=audit_timestamp,
+                )
+
+            logger.info(
+                f"✓ Vault secret '{display_path}' sent to Slack user "
+                f"'{slack_user}' ({target_user_id})"
+            )
+            return json.dumps(
+                {
+                    "success": True,
+                    "message": (
+                        f"Secret '{display_path}' was sent successfully to "
+                        f"Slack user '{slack_user}'."
+                    ),
+                    "slack_user_id": target_user_id,
+                    "data_returned_to_ai": False,
+                },
+                indent=2,
+            )
+
+        except SlackApiError as e:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"Slack API error: {e.response['error']}",
+                }
+            )
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
 
     async def vault_login(self, environment: str = "dev") -> str:
         """Login to Vault in specified environment.
@@ -1222,6 +1570,48 @@ class VaultMCPServer:
         except Exception as e:
             return json.dumps({"success": False, "error": str(e), "path": path})
 
+    async def vault_kv_delete(self, path: str, mount_point: str = "secret") -> str:
+        """
+        Permanently delete an entire secret path and all its versions.
+
+        Args:
+            path: Secret path to delete (e.g., myapp/config)
+            mount_point: KV mount point (default: secret)
+        """
+        if not self._ensure_authenticated():
+            return json.dumps(
+                {"success": False, "error": "Not authenticated. Please login first."}
+            )
+
+        try:
+            self.vault_client.secrets.kv.v2.delete_metadata_and_all_versions(
+                path=path, mount_point=mount_point
+            )
+
+            # Send Slack notification
+            self._send_slack_notification(
+                title=f"Vault KV Secret Deleted",
+                data={"path": f"{mount_point}/{path}", "action": "delete_all_versions"},
+                query_type="kv",
+                service_name=f"{mount_point}/{path}",
+            )
+
+            logger.info(f"Deleted secret and all versions: {mount_point}/{path}")
+
+            return json.dumps(
+                {
+                    "success": True,
+                    "path": f"{mount_point}/{path}",
+                    "message": f"Secret '{mount_point}/{path}' and all its versions have been permanently deleted.",
+                },
+                indent=2,
+            )
+
+        except Exception as e:
+            return json.dumps(
+                {"success": False, "error": str(e), "path": f"{mount_point}/{path}"}
+            )
+
     async def vault_web_ui_open(self) -> str:
         """
         Open Vault Web UI for interactive management.
@@ -1420,6 +1810,64 @@ async def main():
                     "properties": {},
                 },
             ),
+            Tool(
+                name="vault_share_secret",
+                description=(
+                    "Fetch a Vault secret and send it directly to a Slack user as a private DM. "
+                    "The secret content is NEVER returned to the AI — only success/failure status is reported. "
+                    "Use this when asked to share credentials or secrets with a specific person in Slack. "
+                    "Supports two secret types: 'kv' for KV secrets engine (default), "
+                    "'db' for dynamic database credentials (uses vault read, path like database/creds/<service>)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "Vault secret path. "
+                                "For kv type: path under mount_point (e.g., item-management-service). "
+                                "For db type: full database creds path (e.g., database/creds/warehouse-management-service)."
+                            ),
+                        },
+                        "slack_user": {
+                            "type": "string",
+                            "description": "Slack user display name, real name, or username to send the secret to",
+                        },
+                        "mount_point": {
+                            "type": "string",
+                            "description": "KV mount point (default: secret), only used when secret_type is 'kv'",
+                            "default": "secret",
+                        },
+                        "secret_type": {
+                            "type": "string",
+                            "description": "'kv' for KV secrets engine (default), 'db' for dynamic database credentials",
+                            "enum": ["kv", "db"],
+                            "default": "kv",
+                        },
+                    },
+                    "required": ["path", "slack_user"],
+                },
+            ),
+            Tool(
+                name="vault_kv_delete",
+                description="Permanently delete an entire secret path and all its versions from Vault KV store",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "The secret path to delete",
+                        },
+                        "mount_point": {
+                            "type": "string",
+                            "description": "KV mount point (default: secret)",
+                            "default": "secret",
+                        },
+                    },
+                    "required": ["path"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -1455,6 +1903,18 @@ async def main():
                 result = await vault_server.vault_list(path=arguments.get("path"))
             elif name == "vault_web_ui_open":
                 result = await vault_server.vault_web_ui_open()
+            elif name == "vault_kv_delete":
+                result = await vault_server.vault_kv_delete(
+                    path=arguments.get("path"),
+                    mount_point=arguments.get("mount_point", "secret"),
+                )
+            elif name == "vault_share_secret":
+                result = await vault_server.vault_share_secret(
+                    path=arguments.get("path"),
+                    slack_user=arguments.get("slack_user"),
+                    mount_point=arguments.get("mount_point", "secret"),
+                    secret_type=arguments.get("secret_type", "kv"),
+                )
             else:
                 result = json.dumps({"error": f"Unknown tool: {name}"})
 
