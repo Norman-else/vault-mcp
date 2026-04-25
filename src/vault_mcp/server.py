@@ -4,10 +4,13 @@ import os
 import json
 import io
 import logging
+import re
 import subprocess
 import sys
+import shutil
+from html import unescape
 from typing import Any, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, quote
 from datetime import datetime
 
 import hvac
@@ -79,7 +82,29 @@ except ImportError:
 class VaultMCPServer:
     """MCP Server for Vault operations."""
 
+    INHERITED_SHELL_ENV_KEYS = (
+        "PATH",
+        "PATHEXT",
+        "KUBECONFIG",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        "all_proxy",
+        "REQUESTS_CA_BUNDLE",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "CURL_CA_BUNDLE",
+        "VAULT_CACERT",
+        "VAULT_CAPATH",
+        "VAULT_SKIP_VERIFY",
+    )
+
     def __init__(self):
+        self._inherit_network_settings()
         self.vault_client: Optional[hvac.Client] = None
         self.current_env = None  # Currently logged in environment
 
@@ -154,9 +179,470 @@ class VaultMCPServer:
         # Web UI configuration
         self.web_ui = None  # Will be initialized when needed
 
+    class VaultCurlClient:
+        """Vault client backed by curl/vault CLI instead of requests/hvac."""
+
+        class _AuthAWS:
+            def __init__(self, client):
+                self.client = client
+
+            def iam_login(
+                self,
+                access_key: str,
+                secret_key: str,
+                session_token: Optional[str] = None,
+                role: Optional[str] = None,
+                header_value: Optional[str] = None,
+            ):
+                return self.client._aws_iam_login(
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    session_token=session_token,
+                    role=role,
+                    header_value=header_value,
+                )
+
+        class _AuthNamespace:
+            def __init__(self, client):
+                self.aws = VaultMCPServer.VaultCurlClient._AuthAWS(client)
+
+        class _KVV2:
+            def __init__(self, client):
+                self.client = client
+
+            def list_secrets(self, path: str = "", mount_point: str = "secret"):
+                api_path = self.client._join_api_path(mount_point, "metadata", path)
+                return self.client._request("GET", api_path, query={"list": "true"})
+
+            def read_secret_version(
+                self,
+                path: str,
+                mount_point: str = "secret",
+                version: Optional[int] = None,
+            ):
+                api_path = self.client._join_api_path(mount_point, "data", path)
+                query = {"version": str(version)} if version else None
+                return self.client._request("GET", api_path, query=query)
+
+            def read_secret_metadata(self, path: str, mount_point: str = "secret"):
+                api_path = self.client._join_api_path(mount_point, "metadata", path)
+                return self.client._request("GET", api_path)
+
+            def create_or_update_secret(
+                self,
+                path: str,
+                secret: dict,
+                mount_point: str = "secret",
+            ):
+                api_path = self.client._join_api_path(mount_point, "data", path)
+                return self.client._request("POST", api_path, payload={"data": secret})
+
+            def delete_metadata_and_all_versions(
+                self,
+                path: str,
+                mount_point: str = "secret",
+            ):
+                api_path = self.client._join_api_path(mount_point, "metadata", path)
+                return self.client._request("DELETE", api_path)
+
+        class _KVV1:
+            def __init__(self, client):
+                self.client = client
+
+            def read_secret(self, path: str, mount_point: str = "secret"):
+                api_path = self.client._join_api_path(mount_point, path)
+                return self.client._request("GET", api_path)
+
+            def list_secrets(self, path: str = "", mount_point: str = "secret"):
+                api_path = self.client._join_api_path(mount_point, path)
+                return self.client._request("GET", api_path, query={"list": "true"})
+
+        class _KVNamespace:
+            def __init__(self, client):
+                self.v1 = VaultMCPServer.VaultCurlClient._KVV1(client)
+                self.v2 = VaultMCPServer.VaultCurlClient._KVV2(client)
+
+        class _SecretsNamespace:
+            def __init__(self, client):
+                self.kv = VaultMCPServer.VaultCurlClient._KVNamespace(client)
+
+        def __init__(self, server, vault_addr: str, token: Optional[str] = None):
+            self.server = server
+            self.vault_addr = vault_addr.rstrip("/")
+            self.token = token
+            self.auth = VaultMCPServer.VaultCurlClient._AuthNamespace(self)
+            self.secrets = VaultMCPServer.VaultCurlClient._SecretsNamespace(self)
+
+        def _join_api_path(self, *parts: Optional[str]) -> str:
+            normalized = [str(part).strip("/") for part in parts if part and str(part).strip("/")]
+            return "/".join(normalized)
+
+        def _curl_env(self, token: Optional[str] = None, extra_env: Optional[dict] = None) -> dict:
+            env = os.environ.copy()
+            env["VAULT_ADDR"] = self.vault_addr
+            effective_token = token or self.token
+            if effective_token:
+                env["VAULT_TOKEN"] = effective_token
+            if extra_env:
+                env.update({k: v for k, v in extra_env.items() if v})
+            return env
+
+        def _build_url(self, api_path: str, query: Optional[dict[str, str]] = None) -> str:
+            encoded_path = quote(api_path.lstrip("/"), safe="/")
+            url = f"{self.vault_addr}/v1/{encoded_path}"
+            if query:
+                query_str = "&".join(
+                    f"{quote(str(k), safe='')}={quote(str(v), safe='')}"
+                    for k, v in query.items()
+                )
+                url = f"{url}?{query_str}"
+            return url
+
+        def _request(
+            self,
+            method: str,
+            api_path: str,
+            query: Optional[dict[str, str]] = None,
+            payload: Optional[dict] = None,
+            token: Optional[str] = None,
+        ):
+            curl_path = shutil.which("curl")
+            if not curl_path:
+                raise RuntimeError("curl is required for Vault curl transport")
+
+            url = self._build_url(api_path, query=query)
+            cmd = [
+                curl_path,
+                "-sS",
+                "-X",
+                method,
+                "--connect-timeout",
+                "10",
+                "--max-time",
+                "30",
+                "-H",
+                "Accept: application/json",
+                "-w",
+                "\n__CURL_HTTP_CODE__:%{http_code}",
+            ]
+
+            effective_token = token or self.token
+            if effective_token:
+                cmd.extend(["-H", f"X-Vault-Token: {effective_token}"])
+
+            if payload is not None:
+                cmd.extend(["-H", "Content-Type: application/json", "--data-binary", json.dumps(payload)])
+
+            cmd.append(url)
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                env=self._curl_env(token=token),
+                timeout=35,
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or "curl request failed")
+
+            marker = "__CURL_HTTP_CODE__:"
+            if marker not in result.stdout:
+                raise RuntimeError("curl response missing HTTP status marker")
+
+            body, status_line = result.stdout.rsplit(marker, 1)
+            body = body.rstrip("\n")
+            status_code = int(status_line.strip())
+
+            if status_code >= 400:
+                raise RuntimeError(body or f"Vault API request failed with HTTP {status_code}")
+
+            if not body:
+                return {}
+
+            return json.loads(body)
+
+        def _aws_iam_login(
+            self,
+            access_key: str,
+            secret_key: str,
+            session_token: Optional[str] = None,
+            role: Optional[str] = None,
+            header_value: Optional[str] = None,
+        ):
+            vault_path = shutil.which("vault")
+            if not vault_path:
+                raise RuntimeError("vault CLI is required for AWS IAM login fallback")
+
+            cmd = [
+                vault_path,
+                "login",
+                "-format=json",
+                "-method=aws",
+            ]
+
+            if role:
+                cmd.append(f"role={role}")
+            if header_value:
+                cmd.append(f"header_value={header_value}")
+
+            env = self._curl_env(
+                extra_env={
+                    "AWS_ACCESS_KEY_ID": access_key,
+                    "AWS_SECRET_ACCESS_KEY": secret_key,
+                    "AWS_SESSION_TOKEN": session_token,
+                }
+            )
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "vault login failed")
+
+            return json.loads(result.stdout)
+
+        def is_authenticated(self) -> bool:
+            try:
+                self._request("GET", "auth/token/lookup-self")
+                return True
+            except Exception:
+                return False
+
+        def read(self, path: str):
+            return self._request("GET", path)
+
+        def list(self, path: str):
+            return self._request("GET", path, query={"list": "true"})
+
+    def _sync_env_aliases(self):
+        """Mirror upper/lower-case proxy env vars for subprocesses and requests."""
+        alias_pairs = (
+            ("HTTP_PROXY", "http_proxy"),
+            ("HTTPS_PROXY", "https_proxy"),
+            ("NO_PROXY", "no_proxy"),
+            ("ALL_PROXY", "all_proxy"),
+        )
+
+        for primary, alias in alias_pairs:
+            primary_value = os.environ.get(primary)
+            alias_value = os.environ.get(alias)
+
+            if primary_value and not alias_value:
+                os.environ[alias] = primary_value
+            elif alias_value and not primary_value:
+                os.environ[primary] = alias_value
+
+    def _inherit_network_settings(self):
+        """Import network and Vault-related env vars from the user's login shell."""
+        if os.getenv("INHERIT_NETWORK_PROXY_FROM_SHELL", "true").lower() != "true":
+            self._sync_env_aliases()
+            return
+
+        missing_keys = [key for key in self.INHERITED_SHELL_ENV_KEYS if not os.environ.get(key)]
+        if not missing_keys:
+            self._sync_env_aliases()
+            return
+
+        marker = "__VAULT_MCP_NETWORK_ENV__"
+
+        try:
+            result = self._inspect_login_shell_environment(marker)
+        except Exception as e:
+            logger.info(f"Unable to inspect login shell network settings: {e}")
+            self._sync_env_aliases()
+            return
+
+        if result is None:
+            self._sync_env_aliases()
+            return
+
+        if result.returncode != 0:
+            logger.info(
+                f"Login shell exited before settings could be imported: {result.stderr.strip()}"
+            )
+            self._sync_env_aliases()
+            return
+
+        stdout = result.stdout
+        start = stdout.find(marker)
+        end = stdout.rfind(marker)
+        if start == -1 or end == -1 or start == end:
+            logger.info("Login shell did not expose environment settings")
+            self._sync_env_aliases()
+            return
+
+        payload = stdout[start + len(marker):end].strip()
+        if not payload:
+            self._sync_env_aliases()
+            return
+
+        try:
+            inherited_values = json.loads(payload)
+        except json.JSONDecodeError as e:
+            logger.info(f"Failed to parse login shell network settings: {e}")
+            self._sync_env_aliases()
+            return
+
+        imported_keys = []
+        for key, value in inherited_values.items():
+            should_replace = key in {"PATH", "PATHEXT"} and value != os.environ.get(key)
+            if value and (should_replace or not os.environ.get(key)):
+                os.environ[key] = value
+                imported_keys.append(key)
+
+        self._sync_env_aliases()
+
+        if imported_keys:
+            imported_keys.sort()
+            logger.info(
+                f"Imported shell environment settings: {', '.join(imported_keys)}"
+            )
+
+    def _inspect_login_shell_environment(self, marker: str):
+        """Run the user's login shell and print a JSON subset of env vars."""
+        import platform
+
+        keys = list(self.INHERITED_SHELL_ENV_KEYS)
+        system = platform.system()
+
+        if system == "Windows":
+            powershell_path = (
+                shutil.which("powershell")
+                or shutil.which("powershell.exe")
+                or shutil.which("pwsh")
+                or shutil.which("pwsh.exe")
+            )
+            if powershell_path:
+                ps_keys = ", ".join(f"'{key}'" for key in keys)
+                script = f"""
+$keys = @({ps_keys})
+$values = @{{}}
+foreach ($key in $keys) {{
+    $value = [Environment]::GetEnvironmentVariable($key)
+    if (-not [string]::IsNullOrEmpty($value)) {{
+        $values[$key] = $value
+    }}
+}}
+Write-Output '{marker}'
+$values | ConvertTo-Json -Compress
+Write-Output '{marker}'
+"""
+                return subprocess.run(
+                    [powershell_path, "-NoProfile", "-Command", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+
+            cmd_path = os.environ.get("COMSPEC") or shutil.which("cmd") or shutil.which("cmd.exe")
+            if not cmd_path:
+                logger.info("No Windows shell found for environment inspection")
+                return None
+
+            script_lines = [
+                "@echo off",
+                f"echo {marker}",
+                "echo {",
+            ]
+
+            for index, key in enumerate(keys):
+                prefix = "," if index > 0 else ""
+                escaped_key = key.replace("\\", "\\\\").replace('"', '\\"')
+                script_lines.extend(
+                    [
+                        f'if defined {key} (',
+                        f'  set "_value=!{key}!"',
+                        '  set "_value=!_value:\\=\\\\!"',
+                        '  set "_value=!_value:"=\\"!"',
+                        f'  echo {prefix}"{escaped_key}":"!_value!"',
+                        ")",
+                    ]
+                )
+
+            script_lines.extend(
+                [
+                    "echo }",
+                    f"echo {marker}",
+                ]
+            )
+
+            return subprocess.run(
+                [cmd_path, "/V:ON", "/D", "/C", "\n".join(script_lines)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+        shell = os.environ.get("SHELL") or "/bin/zsh"
+        shell_script = f"""
+python3 - <<'PY'
+import json
+import os
+
+keys = {keys!r}
+values = {{key: os.environ.get(key) for key in keys if os.environ.get(key)}}
+print("{marker}")
+print(json.dumps(values))
+print("{marker}")
+PY
+"""
+
+        return subprocess.run(
+            [shell, "-lc", shell_script],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+    def _get_proxy_config(self) -> Optional[dict[str, str]]:
+        """Build an explicit proxy config for requests-based Vault clients."""
+        proxies = {}
+
+        http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+        https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+        all_proxy = os.environ.get("ALL_PROXY") or os.environ.get("all_proxy")
+
+        if http_proxy:
+            proxies["http"] = http_proxy
+        if https_proxy:
+            proxies["https"] = https_proxy
+
+        if all_proxy:
+            proxies.setdefault("http", all_proxy)
+            proxies.setdefault("https", all_proxy)
+
+        return proxies or None
+
+    def _preferred_vault_transport(self) -> str:
+        """Return the preferred transport for authenticated Vault operations."""
+        transport = os.getenv("VAULT_TRANSPORT", "auto").lower()
+        if transport in {"curl", "hvac"}:
+            return transport
+        if shutil.which("curl"):
+            return "curl"
+        return "hvac"
+
+    def _create_vault_client(self, vault_addr: str, token: Optional[str] = None):
+        """Create a Vault client using the preferred transport."""
+        if self._preferred_vault_transport() == "curl":
+            return self.VaultCurlClient(self, vault_addr=vault_addr, token=token)
+
+        client_kwargs = {"url": vault_addr, "token": token}
+        proxies = self._get_proxy_config()
+        if proxies:
+            client_kwargs["proxies"] = proxies
+
+        return hvac.Client(**client_kwargs)
+
     def _init_vault_client(self, token: str, vault_addr: str):
         """Initialize Vault client."""
-        self.vault_client = hvac.Client(url=vault_addr, token=token)
+        self.vault_client = self._create_vault_client(vault_addr, token=token)
 
         # Verify token is valid
         try:
@@ -716,7 +1202,7 @@ class VaultMCPServer:
                 )
 
             # Create temporary Vault client for login
-            temp_client = hvac.Client(url=vault_addr)
+            temp_client = self._create_vault_client(vault_addr)
 
             # Get AWS credentials - prefer aws-vault
             access_key = None
@@ -755,13 +1241,30 @@ class VaultMCPServer:
             logger.info(f"Using Vault role: {vault_role}")
 
             # Use AWS IAM authentication
-            response = temp_client.auth.aws.iam_login(
-                access_key=access_key,
-                secret_key=secret_key,
-                session_token=session_token,
-                role=vault_role,
-                header_value=vault_header_value,
-            )
+            try:
+                response = temp_client.auth.aws.iam_login(
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    session_token=session_token,
+                    role=vault_role,
+                    header_value=vault_header_value,
+                )
+            except Exception as login_error:
+                error_text = str(login_error)
+                if self._preferred_vault_transport() == "curl" or "UNEXPECTED_EOF_WHILE_READING" in error_text:
+                    logger.warning(
+                        "Python Vault transport failed during AWS login, retrying with vault CLI..."
+                    )
+                    cli_client = self.VaultCurlClient(self, vault_addr=vault_addr)
+                    response = cli_client.auth.aws.iam_login(
+                        access_key=access_key,
+                        secret_key=secret_key,
+                        session_token=session_token,
+                        role=vault_role,
+                        header_value=vault_header_value,
+                    )
+                else:
+                    raise
 
             token = response["auth"]["client_token"]
             self._init_vault_client(token, vault_addr)
@@ -923,6 +1426,478 @@ class VaultMCPServer:
             )
         except Exception:
             return os.getenv("USER", "Unknown")
+
+    def _get_slack_user_profile_summary(self, user_id: str) -> dict:
+        """Return non-sensitive Slack user identity fields."""
+        if not user_id or not self.slack_client:
+            return {"id": user_id, "name": user_id}
+        try:
+            resp = self.slack_client.users_info(user=user_id)
+            user = resp.get("user", {})
+            profile = user.get("profile", {})
+            display_name = profile.get("display_name") or user.get("name") or ""
+            real_name = profile.get("real_name") or user.get("real_name") or ""
+            return {
+                "id": user_id,
+                "name": real_name or display_name or user_id,
+                "real_name": real_name,
+                "display_name": display_name,
+            }
+        except Exception as e:
+            logger.warning(f"Failed to look up Slack user {user_id}: {e}")
+            return {"id": user_id, "name": user_id}
+
+    def _get_slack_operator_user_id(self) -> Optional[str]:
+        """Return the Slack user this server should treat as the operator."""
+        return (
+            os.getenv("SLACK_OPERATOR_USER_ID")
+            or os.getenv("SLACK_USER_ID")
+            or self.slack_user_id
+            or None
+        )
+
+    def _resolve_db_request_channel_id(self, channel_id: Optional[str] = None) -> Optional[str]:
+        """Resolve the DB credential request channel without exposing messages."""
+        if channel_id:
+            return channel_id
+
+        configured_channel_id = (
+            os.getenv("SLACK_DB_REQUEST_CHANNEL_ID")
+            or os.getenv("SLACK_AUDIT_CHANNEL_ID")
+            or "C08GHV4ELRX"
+        )
+        if configured_channel_id:
+            return configured_channel_id
+
+        channel_name = os.getenv("SLACK_DB_REQUEST_CHANNEL_NAME", "database-credentials-ops")
+        if not self.slack_client:
+            return None
+
+        try:
+            cursor = None
+            while True:
+                kwargs = {
+                    "types": "public_channel,private_channel",
+                    "exclude_archived": True,
+                    "limit": 200,
+                }
+                if cursor:
+                    kwargs["cursor"] = cursor
+
+                response = self.slack_client.conversations_list(**kwargs)
+                for channel in response.get("channels", []):
+                    if channel.get("name") == channel_name:
+                        return channel.get("id")
+
+                cursor = response.get("response_metadata", {}).get("next_cursor")
+                if not cursor:
+                    break
+        except SlackApiError as e:
+            logger.error(f"Slack API error while resolving DB request channel: {e.response['error']}")
+        except Exception as e:
+            logger.error(f"Error resolving DB request channel: {e}")
+
+        return None
+
+    def _bounded_slack_limit(self, limit: Any, default: int = 100) -> int:
+        """Normalize Slack result limits from MCP arguments."""
+        try:
+            parsed_limit = int(limit)
+        except (TypeError, ValueError):
+            parsed_limit = default
+        return min(max(parsed_limit, 1), 200)
+
+    def _slack_message_text(self, message: dict) -> str:
+        """Extract searchable text from Slack message fields without returning it."""
+        parts = []
+
+        def add_text(value: Any):
+            if isinstance(value, str) and value.strip():
+                parts.append(value)
+
+        add_text(message.get("text"))
+
+        for block in message.get("blocks", []) or []:
+            block_text = block.get("text")
+            if isinstance(block_text, dict):
+                add_text(block_text.get("text"))
+
+            for field in block.get("fields", []) or []:
+                if isinstance(field, dict):
+                    add_text(field.get("text"))
+
+            for element in block.get("elements", []) or []:
+                if isinstance(element, dict):
+                    add_text(element.get("text"))
+
+        for attachment in message.get("attachments", []) or []:
+            add_text(attachment.get("text"))
+            add_text(attachment.get("pretext"))
+            add_text(attachment.get("fallback"))
+            for field in attachment.get("fields", []) or []:
+                if isinstance(field, dict):
+                    add_text(field.get("title"))
+                    add_text(field.get("value"))
+
+        return unescape("\n".join(parts))
+
+    def _normalize_slack_text(self, text: str) -> str:
+        """Normalize mrkdwn enough for field parsing."""
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        text = re.sub(r"[*`_]+", "", text)
+        text = re.sub(r"[ \t]+", " ", text)
+        return text
+
+    def _parse_db_credential_request_message(
+        self,
+        message: dict,
+        channel_id: str,
+        current_user_id: str,
+    ) -> Optional[dict]:
+        """Parse a DB credential request and return only safe structured fields."""
+        raw_text = self._slack_message_text(message)
+        current_user_mention = rf"<@{re.escape(current_user_id)}(?:\|[^>]+)?>"
+        if not re.search(current_user_mention, raw_text):
+            return None
+
+        normalized = self._normalize_slack_text(raw_text)
+        if "Please provide the DB credential to" not in normalized:
+            return None
+
+        database_match = re.search(r"Database:\s*([^\n|]+)", normalized, re.IGNORECASE)
+        environment_match = re.search(r"Environment:\s*([A-Za-z0-9_-]+)", normalized, re.IGNORECASE)
+        recipient_match = re.search(
+            r"Please provide the DB credential to\s+<@([A-Z0-9]+)(?:\|[^>]+)?>",
+            raw_text,
+            re.IGNORECASE,
+        )
+
+        if not database_match or not environment_match or not recipient_match:
+            return None
+
+        database = database_match.group(1).strip(" :")
+        environment = environment_match.group(1).strip().lower()
+        recipient_user_id = recipient_match.group(1)
+        if not database or environment not in self.environments:
+            return None
+
+        recipient = self._get_slack_user_profile_summary(recipient_user_id)
+        operator = self._get_slack_user_profile_summary(current_user_id)
+        ts = message.get("ts")
+
+        return {
+            "channel_id": channel_id,
+            "request_ts": ts,
+            "database": database,
+            "environment": environment,
+            "secret_type": "db",
+            "path": f"database/creds/{database}",
+            "recipient": recipient,
+            "operator": operator,
+        }
+
+    def _parse_audit_notification_message(self, message: dict) -> dict:
+        """Extract non-secret audit metadata from a Vault notification."""
+        raw_text = self._slack_message_text(message)
+        normalized = self._normalize_slack_text(raw_text)
+
+        env_match = re.search(r"\bEnv(?:ironment)?\s*:\s*([A-Za-z0-9_-]+)", normalized, re.IGNORECASE)
+        recipient_match = re.search(r"\bsent to\s+(.+?)\s+at\s+", normalized, re.IGNORECASE)
+        sender_match = re.search(r"\sby\s+(.+?)\.?\s*$", normalized, re.IGNORECASE)
+
+        return {
+            "ts": message.get("ts"),
+            "is_vault_notification": (
+                "New Database Credentials Sent" in normalized
+                or "New credentials sent" in normalized
+            ),
+            "environment": env_match.group(1).lower() if env_match else None,
+            "recipient_name": recipient_match.group(1).strip() if recipient_match else None,
+            "sender_name": sender_match.group(1).strip() if sender_match else None,
+        }
+
+    def _name_matches(self, expected_profile: dict, observed_name: Optional[str]) -> bool:
+        """Compare Slack display/real names from structured profile metadata."""
+        if not observed_name:
+            return False
+
+        observed = observed_name.strip().lower()
+        candidates = {
+            str(expected_profile.get("name", "")).strip().lower(),
+            str(expected_profile.get("real_name", "")).strip().lower(),
+            str(expected_profile.get("display_name", "")).strip().lower(),
+        }
+        candidates.discard("")
+        return observed in candidates
+
+    def _find_db_credential_request_status(
+        self,
+        channel_id: str,
+        request_ts: str,
+        environment: str,
+        recipient: dict,
+        operator: Optional[dict] = None,
+        limit: int = 100,
+    ) -> dict:
+        """Find whether a DB request has a later matching Vault audit notification."""
+        if not self.slack_client:
+            return {
+                "already_processed": False,
+                "confidence": "none",
+                "reason": "Slack is not configured.",
+            }
+
+        try:
+            response = self.slack_client.conversations_history(
+                channel=channel_id,
+                oldest=request_ts,
+                inclusive=False,
+                limit=self._bounded_slack_limit(limit),
+            )
+        except SlackApiError as e:
+            logger.error(f"Slack API error while checking request status: {e.response['error']}")
+            return {
+                "already_processed": False,
+                "confidence": "none",
+                "reason": f"Slack API error: {e.response['error']}",
+            }
+        except Exception as e:
+            logger.error(f"Error checking request status: {e}")
+            return {
+                "already_processed": False,
+                "confidence": "none",
+                "reason": str(e),
+            }
+
+        messages = list(response.get("messages", []) or [])
+        try:
+            thread_response = self.slack_client.conversations_replies(
+                channel=channel_id,
+                ts=request_ts,
+                limit=self._bounded_slack_limit(limit),
+            )
+            for message in thread_response.get("messages", []) or []:
+                if message.get("ts") and message.get("ts") != request_ts:
+                    messages.append(message)
+        except SlackApiError as e:
+            # Some channels/messages may not have thread access; channel history is still useful.
+            logger.info(f"Unable to read request thread while checking status: {e.response['error']}")
+        except Exception as e:
+            logger.info(f"Unable to read request thread while checking status: {e}")
+
+        seen_ts = set()
+        unique_messages = []
+        for message in sorted(messages, key=lambda item: item.get("ts", ""), reverse=True):
+            ts = message.get("ts")
+            if not ts or ts in seen_ts:
+                continue
+            seen_ts.add(ts)
+            unique_messages.append(message)
+
+        expected_env = environment.lower()
+        operator = operator or {}
+
+        for message in unique_messages:
+            audit = self._parse_audit_notification_message(message)
+            if not audit["is_vault_notification"]:
+                continue
+            if audit["environment"] != expected_env:
+                continue
+            if not self._name_matches(recipient, audit["recipient_name"]):
+                continue
+
+            sender_matches = True
+            if operator:
+                sender_matches = self._name_matches(operator, audit["sender_name"])
+
+            if not sender_matches:
+                return {
+                    "already_processed": True,
+                    "confidence": "medium",
+                    "processed_ts": audit["ts"],
+                    "processed_by": {"name": audit["sender_name"]},
+                    "reason": (
+                        "Found a later Vault notification for the same recipient "
+                        "and environment, but the sender did not match exactly."
+                    ),
+                }
+
+            return {
+                "already_processed": True,
+                "confidence": "high",
+                "processed_ts": audit["ts"],
+                "processed_by": {
+                    "id": operator.get("id"),
+                    "name": audit["sender_name"] or operator.get("name"),
+                },
+            }
+
+        return {
+            "already_processed": False,
+            "confidence": "high",
+            "reason": "No later matching Vault notification was found.",
+        }
+
+    async def vault_get_db_credential_request_status(
+        self,
+        channel_id: str,
+        request_ts: str,
+        environment: str,
+        recipient_user_id: str,
+        operator_user_id: Optional[str] = None,
+        limit: int = 100,
+    ) -> str:
+        """Return processed status for one DB credential request without exposing Slack messages."""
+        if not SLACK_AVAILABLE or not self.slack_client:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "Slack is not configured. Set SLACK_ENABLED=true and "
+                        "SLACK_BOT_TOKEN in environment variables."
+                    ),
+                }
+            )
+
+        if not channel_id or not request_ts or not environment or not recipient_user_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "channel_id, request_ts, environment, and recipient_user_id "
+                        "are required."
+                    ),
+                }
+            )
+
+        recipient = self._get_slack_user_profile_summary(recipient_user_id)
+        operator = None
+        if operator_user_id:
+            operator = self._get_slack_user_profile_summary(operator_user_id)
+        else:
+            configured_operator_id = self._get_slack_operator_user_id()
+            if configured_operator_id:
+                operator = self._get_slack_user_profile_summary(configured_operator_id)
+
+        status = self._find_db_credential_request_status(
+            channel_id=channel_id,
+            request_ts=request_ts,
+            environment=environment,
+            recipient=recipient,
+            operator=operator,
+            limit=limit,
+        )
+
+        return json.dumps(
+            {
+                "success": True,
+                "channel_id": channel_id,
+                "request_ts": request_ts,
+                "environment": environment.lower(),
+                "recipient": recipient,
+                "status": status,
+                "raw_slack_messages_returned": False,
+            },
+            indent=2,
+        )
+
+    async def vault_get_latest_db_credential_request(
+        self,
+        channel_id: Optional[str] = None,
+        include_processed_status: bool = True,
+        limit: int = 100,
+    ) -> str:
+        """Return the latest DB credential request directed at the configured operator."""
+        if not SLACK_AVAILABLE or not self.slack_client:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "Slack is not configured. Set SLACK_ENABLED=true and "
+                        "SLACK_BOT_TOKEN in environment variables."
+                    ),
+                }
+            )
+
+        operator_user_id = self._get_slack_operator_user_id()
+        if not operator_user_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "No Slack operator user configured. Set "
+                        "SLACK_OPERATOR_USER_ID or SLACK_USER_ID."
+                    ),
+                }
+            )
+
+        resolved_channel_id = self._resolve_db_request_channel_id(channel_id)
+        if not resolved_channel_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "Could not resolve DB credential request channel. Set "
+                        "SLACK_DB_REQUEST_CHANNEL_ID or SLACK_DB_REQUEST_CHANNEL_NAME."
+                    ),
+                }
+            )
+
+        try:
+            response = self.slack_client.conversations_history(
+                channel=resolved_channel_id,
+                limit=self._bounded_slack_limit(limit),
+            )
+        except SlackApiError as e:
+            logger.error(f"Slack API error while reading DB request candidates: {e.response['error']}")
+            return json.dumps({"success": False, "error": f"Slack API error: {e.response['error']}"})
+        except Exception as e:
+            logger.error(f"Error reading DB request candidates: {e}")
+            return json.dumps({"success": False, "error": str(e)})
+
+        latest_request = None
+        for message in response.get("messages", []) or []:
+            parsed = self._parse_db_credential_request_message(
+                message=message,
+                channel_id=resolved_channel_id,
+                current_user_id=operator_user_id,
+            )
+            if parsed:
+                latest_request = parsed
+                break
+
+        if not latest_request:
+            return json.dumps(
+                {
+                    "success": True,
+                    "found": False,
+                    "channel_id": resolved_channel_id,
+                    "message": "No DB credential request directed at the configured operator was found.",
+                    "raw_slack_messages_returned": False,
+                },
+                indent=2,
+            )
+
+        if include_processed_status:
+            latest_request["status"] = self._find_db_credential_request_status(
+                channel_id=latest_request["channel_id"],
+                request_ts=latest_request["request_ts"],
+                environment=latest_request["environment"],
+                recipient=latest_request["recipient"],
+                operator=latest_request["operator"],
+                limit=limit,
+            )
+
+        return json.dumps(
+            {
+                "success": True,
+                "found": True,
+                "request": latest_request,
+                "raw_slack_messages_returned": False,
+                "credential_values_returned": False,
+            },
+            indent=2,
+        )
 
     def _post_credentials_audit(
         self,
@@ -1850,6 +2825,85 @@ async def main():
                 },
             ),
             Tool(
+                name="vault_get_latest_db_credential_request",
+                description=(
+                    "Return the latest DB credential workflow request directed at the configured Slack operator "
+                    "from the DB credential request channel. Only structured fields are returned; raw Slack "
+                    "messages and credential values are never returned to the AI. When requested, also includes "
+                    "whether a later matching Vault notification already processed the request."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "channel_id": {
+                            "type": "string",
+                            "description": (
+                                "Optional Slack channel ID. Defaults to SLACK_DB_REQUEST_CHANNEL_ID, "
+                                "SLACK_AUDIT_CHANNEL_ID, or SLACK_DB_REQUEST_CHANNEL_NAME."
+                            ),
+                        },
+                        "include_processed_status": {
+                            "type": "boolean",
+                            "description": "Whether to check for a later matching Vault notification",
+                            "default": True,
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum recent Slack messages for the server-side scan, capped at 200",
+                            "default": 100,
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="vault_get_db_credential_request_status",
+                description=(
+                    "Return whether a specific DB credential request has already been processed by finding "
+                    "a later matching Vault notification. Only structured status is returned; raw Slack messages "
+                    "and credential values are never returned to the AI."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "channel_id": {
+                            "type": "string",
+                            "description": "Slack channel ID containing the request and Vault notification",
+                        },
+                        "request_ts": {
+                            "type": "string",
+                            "description": "Slack timestamp of the DB credential request message",
+                        },
+                        "environment": {
+                            "type": "string",
+                            "enum": ["dev", "sat", "prod", "local"],
+                            "description": "Vault environment from the request",
+                        },
+                        "recipient_user_id": {
+                            "type": "string",
+                            "description": "Slack user ID of the recipient who should receive the credential",
+                        },
+                        "operator_user_id": {
+                            "type": "string",
+                            "description": (
+                                "Optional Slack user ID of the operator expected to have processed the request. "
+                                "Defaults to SLACK_OPERATOR_USER_ID or SLACK_USER_ID."
+                            ),
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum later Slack messages for the server-side scan, capped at 200",
+                            "default": 100,
+                        },
+                    },
+                    "required": [
+                        "channel_id",
+                        "request_ts",
+                        "environment",
+                        "recipient_user_id",
+                    ],
+                },
+            ),
+            Tool(
                 name="vault_kv_delete",
                 description="Permanently delete an entire secret path and all its versions from Vault KV store",
                 inputSchema={
@@ -1914,6 +2968,23 @@ async def main():
                     slack_user=arguments.get("slack_user"),
                     mount_point=arguments.get("mount_point", "secret"),
                     secret_type=arguments.get("secret_type", "kv"),
+                )
+            elif name == "vault_get_latest_db_credential_request":
+                result = await vault_server.vault_get_latest_db_credential_request(
+                    channel_id=arguments.get("channel_id"),
+                    include_processed_status=arguments.get(
+                        "include_processed_status", True
+                    ),
+                    limit=arguments.get("limit", 100),
+                )
+            elif name == "vault_get_db_credential_request_status":
+                result = await vault_server.vault_get_db_credential_request_status(
+                    channel_id=arguments.get("channel_id"),
+                    request_ts=arguments.get("request_ts"),
+                    environment=arguments.get("environment"),
+                    recipient_user_id=arguments.get("recipient_user_id"),
+                    operator_user_id=arguments.get("operator_user_id"),
+                    limit=arguments.get("limit", 100),
                 )
             else:
                 result = json.dumps({"error": f"Unknown tool: {name}"})

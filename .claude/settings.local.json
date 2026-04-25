@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(brainstorming)",
+      "Bash(python -m py_compile:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "mcp__mcp-vault__vault_web_ui_open",
+      "Bash(python -m vault_mcp.web_ui:*)",
+      "Bash(python3:*)",
+      "Read(//Users/normanzuo/.claude/commands/**)",
+      "Read(//Users/normanzuo/.claude/**)",
+      "mcp__mcp-vault__vault_send_secret_to_slack_user",
+      "mcp__mcp-vault__vault_login",
+      "mcp__mcp-vault__vault_share_secret",
+      "mcp__mcp-vault__vault_kv_list",
+      "mcp__mcp-vault__vault_list",
+      "mcp__mcp-vault__vault_kv_get"
+    ]
+  }
+}
