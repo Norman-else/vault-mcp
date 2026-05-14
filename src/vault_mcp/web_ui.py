@@ -407,6 +407,54 @@ class VaultWebUI:
                     'error': str(e)
                 }), 500
 
+        @self.app.route('/api/secrets/update-json', methods=['POST'])
+        def update_secret_json():
+            """Replace an entire secret payload with a JSON object."""
+            try:
+                data = request.get_json()
+                path = data.get('path')
+                mount_point = data.get('mount_point', 'secret')
+                secret_data = data.get('data')
+
+                if not path:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Path is required'
+                    }), 400
+
+                if not isinstance(secret_data, dict):
+                    return jsonify({
+                        'success': False,
+                        'error': 'Secret JSON must be an object'
+                    }), 400
+
+                if not self.vault_server._ensure_authenticated():
+                    return jsonify({
+                        'success': False,
+                        'error': 'Not authenticated'
+                    }), 401
+
+                self.vault_server.vault_client.secrets.kv.v2.create_or_update_secret(
+                    path=path,
+                    secret=secret_data,
+                    mount_point=mount_point
+                )
+
+                logger.info(f"Updated secret JSON: {mount_point}/{path}")
+
+                return jsonify({
+                    'success': True,
+                    'message': f'Secret "{mount_point}/{path}" updated successfully',
+                    'data': secret_data
+                })
+
+            except Exception as e:
+                logger.error(f"Error updating secret JSON: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+
         @self.app.route('/api/secrets/delete-key', methods=['POST'])
         def delete_key():
             """Delete a key from a secret."""

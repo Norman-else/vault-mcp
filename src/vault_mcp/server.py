@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import shutil
+import time
 from html import unescape
 from typing import Any, Optional
 from urllib.parse import urljoin, quote
@@ -107,6 +108,12 @@ class VaultMCPServer:
         self._inherit_network_settings()
         self.vault_client: Optional[hvac.Client] = None
         self.current_env = None  # Currently logged in environment
+        self.auth_check_ttl_seconds = float(
+            os.getenv("VAULT_AUTH_CHECK_TTL_SECONDS", "5")
+        )
+        self._auth_check_cached_result: Optional[bool] = None
+        self._auth_check_cached_at = 0.0
+        self._auth_check_cached_client_id: Optional[int] = None
 
         # Slack configuration
         self.slack_enabled = os.getenv("SLACK_ENABLED", "false").lower() == "true"
@@ -643,20 +650,54 @@ PY
     def _init_vault_client(self, token: str, vault_addr: str):
         """Initialize Vault client."""
         self.vault_client = self._create_vault_client(vault_addr, token=token)
+        self._invalidate_auth_check_cache()
 
         # Verify token is valid
         try:
-            self.vault_client.is_authenticated()
+            is_authenticated = self.vault_client.is_authenticated()
+            self._set_auth_check_cache(is_authenticated)
+            if not is_authenticated:
+                raise RuntimeError("Vault token verification failed")
             logger.info("Vault client initialized successfully")
         except Exception as e:
             logger.error(f"Failed to authenticate with Vault: {e}")
             self.vault_client = None
+            self._invalidate_auth_check_cache()
+
+    def _set_auth_check_cache(self, result: bool):
+        """Cache the latest authentication check result for a short TTL."""
+        self._auth_check_cached_result = result
+        self._auth_check_cached_at = time.monotonic()
+        self._auth_check_cached_client_id = id(self.vault_client) if self.vault_client else None
+
+    def _invalidate_auth_check_cache(self):
+        """Clear cached authentication check state."""
+        self._auth_check_cached_result = None
+        self._auth_check_cached_at = 0.0
+        self._auth_check_cached_client_id = None
 
     def _ensure_authenticated(self) -> bool:
-        """Ensure authenticated."""
-        if self.vault_client and self.vault_client.is_authenticated():
-            return True
-        return False
+        """Ensure authenticated with a short-lived cache to avoid repeated token lookups."""
+        if not self.vault_client:
+            self._invalidate_auth_check_cache()
+            return False
+
+        current_client_id = id(self.vault_client)
+        cache_age = time.monotonic() - self._auth_check_cached_at
+        if (
+            self._auth_check_cached_result is not None
+            and self._auth_check_cached_client_id == current_client_id
+            and cache_age < self.auth_check_ttl_seconds
+        ):
+            return self._auth_check_cached_result
+
+        try:
+            is_authenticated = self.vault_client.is_authenticated()
+        except Exception:
+            is_authenticated = False
+
+        self._set_auth_check_cache(is_authenticated)
+        return is_authenticated
 
     def _switch_k8s_context(self, k8s_context: str) -> bool:
         """Switch to specified Kubernetes context.
@@ -2180,6 +2221,7 @@ PY
             if self.vault_client:
                 logger.info("Clearing Vault client...")
                 self.vault_client = None
+            self._invalidate_auth_check_cache()
 
             messages = []
 

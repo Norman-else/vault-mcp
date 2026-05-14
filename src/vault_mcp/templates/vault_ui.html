@@ -230,6 +230,7 @@
             cursor: pointer;
             transition: all 0.2s;
             font-size: 14px;
+            position: relative;
         }
 
         .tree-item:hover {
@@ -248,10 +249,32 @@
             border-left: 3px solid var(--primary);
         }
 
+        .tree-item.loading {
+            background-color: rgba(59, 130, 246, 0.08);
+            color: var(--primary);
+            pointer-events: none;
+        }
+
+        .tree-item.loading::after {
+            content: '';
+            margin-left: auto;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(59, 130, 246, 0.18);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            flex-shrink: 0;
+        }
+
         .tree-icon {
             width: 16px;
             height: 16px;
             opacity: 0.7;
+        }
+
+        .tree-item.loading .tree-icon {
+            opacity: 0.45;
         }
 
         /* Main Content */
@@ -720,7 +743,7 @@
 
         .kv-item {
             display: grid;
-            grid-template-columns: 250px 1fr auto;
+            grid-template-columns: minmax(180px, 250px) minmax(0, 1fr) auto;
             gap: 20px;
             padding: 20px 24px;
             border-bottom: 1px solid var(--border);
@@ -751,10 +774,19 @@
             font-family: var(--font-mono);
             font-size: 14px;
             color: var(--text-secondary);
-            word-break: break-all;
-            overflow-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: anywhere;
             max-width: 100%;
+            min-width: 0;
             line-height: 1.6;
+        }
+
+        .kv-value {
+            max-width: 100%;
+            min-width: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
 
         .value-masked {
@@ -775,6 +807,7 @@
         .kv-actions {
             display: flex;
             gap: 8px;
+            flex-shrink: 0;
         }
 
         .btn-icon {
@@ -949,6 +982,89 @@
             min-height: 42px;
             resize: vertical;
             padding-right: 45px;
+            line-height: 1.5;
+        }
+
+        .textarea-input.masked {
+            color: transparent;
+            text-shadow: 0 0 8px rgba(148, 163, 184, 0.95);
+            caret-color: var(--primary);
+        }
+
+        .modal-content.json-editor-modal {
+            max-width: min(1200px, calc(100vw - 96px));
+            width: min(1200px, calc(100vw - 96px));
+        }
+
+        .json-editor-surface {
+            position: relative;
+            width: 100%;
+        }
+
+        .json-editor-textarea {
+            min-height: min(68vh, 720px);
+            resize: vertical;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            tab-size: 2;
+            position: relative;
+            z-index: 1;
+            background: transparent;
+            color: transparent;
+            caret-color: var(--text-primary);
+        }
+
+        .json-editor-textarea::selection {
+            background: rgba(59, 130, 246, 0.22);
+        }
+
+        .json-editor-highlight {
+            position: absolute;
+            inset: 0;
+            margin: 0;
+            padding: 10px 14px 10px 14px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            tab-size: 2;
+            color: var(--text-primary);
+            pointer-events: none;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .json-token-key {
+            color: #2563eb;
+            font-weight: 600;
+        }
+
+        .json-token-string {
+            color: #0f766e;
+        }
+
+        .json-token-number {
+            color: #c2410c;
+        }
+
+        .json-token-boolean {
+            color: #047857;
+            font-weight: 600;
+        }
+
+        .json-token-null {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .json-editor-help {
+            margin-top: 10px;
+            color: var(--text-muted);
+            font-size: 13px;
             line-height: 1.5;
         }
 
@@ -1876,6 +1992,7 @@
             cursor: pointer;
             transition: all 0.2s;
             font-size: 14px;
+            position: relative;
         }
         
         .db-role-item:hover {
@@ -1888,11 +2005,57 @@
             color: var(--primary);
             border-left: 3px solid var(--primary);
         }
-        
+
+        .db-role-item.loading {
+            background-color: rgba(59, 130, 246, 0.08);
+            color: var(--primary);
+            pointer-events: none;
+        }
+
+        .db-role-item.loading::after {
+            content: '';
+            margin-left: auto;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(59, 130, 246, 0.18);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            flex-shrink: 0;
+        }
+
         .db-role-icon {
             width: 16px;
             height: 16px;
             opacity: 0.7;
+        }
+
+        .db-role-item.loading .db-role-icon {
+            opacity: 0.45;
+        }
+
+        .content-loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            min-height: 220px;
+            color: var(--text-muted);
+        }
+
+        .content-loading-spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid rgba(59, 130, 246, 0.14);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        .content-loading-text {
+            font-size: 14px;
+            font-weight: 500;
         }
         
         /* Database Credentials View */
@@ -2524,6 +2687,15 @@
                             <div class="card-header">
                                 <span class="card-title">Key-Value Pairs</span>
                                 <div style="display: flex; gap: 8px; align-items: center;">
+                                    <button class="btn-icon-text" onclick="openJsonEditorModal()" id="editJsonBtn">
+                                        <svg class="icon" viewBox="0 0 24 24">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                            <polyline points="14 2 14 8 20 8"></polyline>
+                                            <line x1="12" y1="12" x2="12" y2="18"></line>
+                                            <line x1="9" y1="15" x2="15" y2="15"></line>
+                                        </svg>
+                                        New Version
+                                    </button>
                                     <button class="btn-icon-text" onclick="startAddKey()" id="addKeyBtn">
                                         <svg class="icon" viewBox="0 0 24 24">
                                             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -2582,6 +2754,32 @@
             <div class="modal-actions">
                 <button class="btn-secondary" onclick="closeNewSecretModal()">Cancel</button>
                 <button class="btn-primary" onclick="createNewSecret()">Create Secret</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="jsonEditorModal" onclick="closeJsonEditorModalOnOverlay(event)">
+        <div class="modal-content json-editor-modal" onclick="event.stopPropagation()">
+            <button class="modal-close-btn" onclick="closeJsonEditorModal()">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <h2 class="modal-title">Create New Secret Version</h2>
+            <div class="form-group">
+                <label class="label">NEW VERSION JSON</label>
+                <div class="json-editor-surface">
+                    <pre class="json-editor-highlight" id="jsonEditorHighlight" aria-hidden="true"></pre>
+                    <textarea class="input textarea-input json-editor-textarea" id="jsonEditorInput" spellcheck="false" oninput="updateJsonEditorHighlight()" onscroll="syncJsonEditorScroll()"></textarea>
+                </div>
+                <div class="json-editor-help">
+                    Provide a valid top-level JSON object. Saving will write the full payload as a new secret version.
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeJsonEditorModal()">Cancel</button>
+                <button class="btn-primary" id="saveJsonBtn" onclick="saveSecretJson()">Create Version</button>
             </div>
         </div>
     </div>
@@ -2842,6 +3040,7 @@
 
     <script>
         let currentSecret = null;
+        let currentSecretData = null;
         let currentMountPoint = 'secret';
         let currentVersion = null; // Track selected version
         let availableVersions = []; // Store available versions
@@ -2865,6 +3064,7 @@
             if (mode === 'kv') {
                 // Clear current selection when switching to KV mode
                 currentSecret = null;
+                currentSecretData = null;
                 currentPath = ''; // Reset to root path
                 
                 // Immediately show loading spinner (same as Database Credentials)
@@ -3049,6 +3249,7 @@
         // --- API Interaction ---
 
         let currentEnv = null;
+        let authRefreshPromise = null;
         let timeoutUpdateInterval = null;
         let cachedTimeoutSeconds = null; // Cache timeout value from backend to avoid hardcoding
         let timeoutWarningShown = {
@@ -3082,16 +3283,89 @@
 
             return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
+
+        async function attemptAutomaticReauth() {
+            if (!currentEnv) {
+                return false;
+            }
+
+            if (authRefreshPromise) {
+                return authRefreshPromise;
+            }
+
+            const env = currentEnv;
+            showToast(`Session expired. Re-authenticating to ${env.toUpperCase()}...`, 'warning');
+
+            authRefreshPromise = (async () => {
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ environment: env })
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        currentEnv = result.environment || env;
+                        updateEnvDisplay();
+                        document.getElementById('loginModal').classList.remove('active');
+                        showToast(`Reconnected to ${currentEnv.toUpperCase()}`);
+                        return true;
+                    }
+
+                    showToast(result.error || result.message || 'Authentication failed', 'error');
+                    showLoginModalForEnvSwitch(env);
+                    return false;
+                } catch (error) {
+                    console.error('Automatic re-authentication failed:', error);
+                    showToast('Automatic re-authentication failed', 'error');
+                    showLoginModalForEnvSwitch(env);
+                    return false;
+                } finally {
+                    authRefreshPromise = null;
+                }
+            })();
+
+            return authRefreshPromise;
+        }
+
+        async function authenticatedFetch(input, init) {
+            let response = await fetch(input, init);
+            if (response.status !== 401) {
+                return response;
+            }
+
+            if (!currentEnv) {
+                showLoginModalWithEnvSelector();
+                return response;
+            }
+
+            const reauthSucceeded = await attemptAutomaticReauth();
+            if (!reauthSucceeded) {
+                return response;
+            }
+
+            response = await fetch(input, init);
+            if (response.status === 401) {
+                showLoginModalForEnvSwitch(currentEnv);
+            }
+            return response;
+        }
         
         async function loadEnvironment() {
             try {
                 const response = await fetch('/api/environment');
                 const data = await response.json();
                 
-                if (data.success && data.authenticated && data.environment) {
+                if (data.success && data.environment) {
                     currentEnv = data.environment;
                     updateEnvDisplay();
-                    document.getElementById('loginModal').classList.remove('active');
+
+                    if (data.authenticated) {
+                        document.getElementById('loginModal').classList.remove('active');
+                    } else {
+                        showLoginModalForEnvSwitch(data.environment);
+                    }
                 } else {
                     currentEnv = null;
                     updateEnvDisplay();
@@ -3300,6 +3574,7 @@
         function resetUIState() {
             // Reset data
             currentSecret = null;
+            currentSecretData = null;
             currentVersion = null;
             availableVersions = [];
             currentDbRole = null;
@@ -3759,9 +4034,52 @@
             foldersCount.textContent = folders;
         }
 
+        function clearSidebarLoadingState() {
+            document.querySelectorAll('.tree-item.loading, .db-role-item.loading').forEach(item => {
+                item.classList.remove('loading');
+            });
+        }
+
+        function setSidebarLoadingState(item) {
+            clearSidebarLoadingState();
+            if (item) {
+                item.classList.add('loading');
+            }
+        }
+
+        function showSecretLoadingState(path) {
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('secretEditor').style.display = 'block';
+            document.getElementById('dbCredsView').style.display = 'none';
+            document.getElementById('addKeyBtn').disabled = true;
+            document.getElementById('editJsonBtn').disabled = true;
+            document.getElementById('deleteSecretBtn').disabled = true;
+            updateBreadcrumbs(path);
+            document.getElementById('secretMeta').innerHTML = '<div class="meta-item">Loading secret metadata...</div>';
+            document.getElementById('kvRows').innerHTML = `
+                <div class="content-loading-state">
+                    <div class="content-loading-spinner"></div>
+                    <div class="content-loading-text">Loading secret data...</div>
+                </div>
+            `;
+        }
+
+        function handleSecretTreeNavigation(item, path) {
+            setSidebarLoadingState(item);
+            loadSecrets(path);
+        }
+
+        function handleSecretSidebarSelection(item, path) {
+            setSidebarLoadingState(item);
+            loadSecret(path, null, item);
+        }
+
         async function loadSecrets(path = '') {
+            const listEl = document.getElementById('secretList');
+
             try {
-                const response = await fetch(`/api/secrets/list?path=${encodeURIComponent(path)}&mount_point=secret`);
+                listEl.innerHTML = '<div style="padding: 20px; display: flex; justify-content: center;"><div class="spinner"></div></div>';
+                const response = await authenticatedFetch(`/api/secrets/list?path=${encodeURIComponent(path)}&mount_point=secret`);
                 
                 if (response.status === 401) {
                     // Only show login modal if not already authenticated
@@ -3772,7 +4090,6 @@
                 }
 
                 const data = await response.json();
-                const listEl = document.getElementById('secretList');
                 listEl.innerHTML = '';
 
                 // Only update main UI if in KV mode
@@ -3781,6 +4098,7 @@
                     document.getElementById('secretEditor').style.display = 'none';
                     document.getElementById('emptyState').style.display = 'flex';
                     currentSecret = null;
+                    currentSecretData = null;
                     currentVersion = null;
                     availableVersions = [];
 
@@ -3801,7 +4119,7 @@
                     `;
                     backItem.onclick = () => {
                         const parentPath = path.split('/').slice(0, -2).join('/');
-                        loadSecrets(parentPath ? parentPath + '/' : '');
+                        handleSecretTreeNavigation(backItem, parentPath ? parentPath + '/' : '');
                     };
                     listEl.appendChild(backItem);
                 }
@@ -3813,6 +4131,8 @@
                     data.secrets.forEach(secret => {
                         const el = document.createElement('div');
                         el.className = `tree-item ${secret.type === 'folder' ? 'folder' : ''}`;
+                        el.dataset.path = secret.path;
+                        el.dataset.itemType = secret.type;
                         
                         const icon = secret.type === 'folder' 
                             ? '<svg class="icon tree-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>'
@@ -3821,9 +4141,9 @@
                         el.innerHTML = `${icon}<span>${secret.name}</span>`;
                         
                         if (secret.type === 'secret') {
-                            el.onclick = () => loadSecret(secret.path);
+                            el.onclick = () => handleSecretSidebarSelection(el, secret.path);
                         } else {
-                            el.onclick = () => loadSecrets(secret.path);
+                            el.onclick = () => handleSecretTreeNavigation(el, secret.path);
                         }
                         listEl.appendChild(el);
                     });
@@ -3832,11 +4152,18 @@
                 }
             } catch (error) {
                 showToast('Error loading secrets', 'error');
+            } finally {
+                clearSidebarLoadingState();
             }
         }
 
-        async function loadSecret(path, version = null) {
+        async function loadSecret(path, version = null, triggerItem = null) {
             try {
+                if (triggerItem) {
+                    setSidebarLoadingState(triggerItem);
+                }
+                showSecretLoadingState(path);
+
                 // Fetch versions first
                 await loadSecretVersions(path);
                 
@@ -3846,7 +4173,7 @@
                     url += `&version=${version}`;
                 }
                 
-                const response = await fetch(url);
+                const response = await authenticatedFetch(url);
                 const data = await response.json();
 
                 if (data.success) {
@@ -3856,11 +4183,15 @@
                     }
                     
                     currentSecret = path;
+                    currentSecretData = data.data;
                     currentVersion = version || data.metadata.version;
                     
                     // Switch view
                     document.getElementById('emptyState').style.display = 'none';
                     document.getElementById('secretEditor').style.display = 'block';
+                    document.getElementById('addKeyBtn').disabled = false;
+                    document.getElementById('editJsonBtn').disabled = false;
+                    document.getElementById('deleteSecretBtn').disabled = false;
                     
                     // Update breadcrumbs in top bar
                     updateBreadcrumbs(path);
@@ -3933,13 +4264,18 @@
                     // Highlight active sidebar item
                     document.querySelectorAll('.tree-item').forEach(el => {
                         el.classList.remove('active');
-                        if (el.textContent.includes(path.split('/').pop())) {
+                        if (el.dataset.itemType === 'secret' && el.dataset.path === path) {
                             el.classList.add('active');
                         }
                     });
                 }
             } catch (error) {
+                document.getElementById('addKeyBtn').disabled = false;
+                document.getElementById('editJsonBtn').disabled = false;
+                document.getElementById('deleteSecretBtn').disabled = false;
                 showToast('Error loading secret details', 'error');
+            } finally {
+                clearSidebarLoadingState();
             }
         }
 
@@ -4093,7 +4429,7 @@
             btn.textContent = 'Adding...';
             
             try {
-                const response = await fetch('/api/secrets/update', {
+                const response = await authenticatedFetch('/api/secrets/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -4158,7 +4494,7 @@
             btn.textContent = 'Saving...';
             
             try {
-                const response = await fetch('/api/secrets/update', {
+                const response = await authenticatedFetch('/api/secrets/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -4230,12 +4566,10 @@
             const textarea = btn.parentElement.querySelector('.edit-value-input');
             const icon = btn.querySelector('svg');
             
-            if (textarea.type === 'password' || textarea.classList.contains('masked')) {
-                textarea.type = 'text';
+            if (textarea.classList.contains('masked')) {
                 textarea.classList.remove('masked');
                 icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
             } else {
-                textarea.type = 'password';
                 textarea.classList.add('masked');
                 icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
             }
@@ -4257,7 +4591,7 @@
             if (key && value) dataPayload[key] = value;
 
             try {
-                const response = await fetch('/api/secrets/create', {
+                const response = await authenticatedFetch('/api/secrets/create', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -4286,7 +4620,7 @@
         
         async function loadSecretVersions(path) {
             try {
-                const response = await fetch(`/api/secrets/versions?path=${encodeURIComponent(path)}&mount_point=secret`);
+                const response = await authenticatedFetch(`/api/secrets/versions?path=${encodeURIComponent(path)}&mount_point=secret`);
                 const data = await response.json();
                 
                 if (data.success) {
@@ -4496,6 +4830,129 @@
             document.getElementById('newSecretModal').classList.remove('active');
         }
 
+        function openJsonEditorModal() {
+            if (!currentSecret || !currentSecretData) {
+                showToast('Please select a secret first', 'error');
+                return;
+            }
+
+            document.getElementById('jsonEditorInput').value = JSON.stringify(currentSecretData, null, 2);
+            updateJsonEditorHighlight();
+            document.getElementById('jsonEditorModal').classList.add('active');
+        }
+
+        function closeJsonEditorModal() {
+            document.getElementById('jsonEditorModal').classList.remove('active');
+        }
+
+        function closeJsonEditorModalOnOverlay(event) {
+            if (event.target === event.currentTarget) {
+                closeJsonEditorModal();
+            }
+        }
+
+        function syntaxHighlightJsonEditor(value) {
+            const tokenRegex = /"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?/g;
+            let result = '';
+            let lastIndex = 0;
+            let match;
+
+            while ((match = tokenRegex.exec(value)) !== null) {
+                result += escapeHtml(value.slice(lastIndex, match.index));
+
+                const token = match[0];
+                let tokenClass = 'json-token-string';
+                if (match[1]) {
+                    tokenClass = 'json-token-key';
+                } else if (token === 'true' || token === 'false') {
+                    tokenClass = 'json-token-boolean';
+                } else if (token === 'null') {
+                    tokenClass = 'json-token-null';
+                } else if (/^-?\d/.test(token)) {
+                    tokenClass = 'json-token-number';
+                }
+
+                result += `<span class="${tokenClass}">${escapeHtml(token)}</span>`;
+                lastIndex = match.index + token.length;
+            }
+
+            result += escapeHtml(value.slice(lastIndex));
+            return result || ' ';
+        }
+
+        function updateJsonEditorHighlight() {
+            const input = document.getElementById('jsonEditorInput');
+            const highlight = document.getElementById('jsonEditorHighlight');
+            if (!input || !highlight) return;
+
+            highlight.innerHTML = syntaxHighlightJsonEditor(input.value);
+            syncJsonEditorScroll();
+        }
+
+        function syncJsonEditorScroll() {
+            const input = document.getElementById('jsonEditorInput');
+            const highlight = document.getElementById('jsonEditorHighlight');
+            if (!input || !highlight) return;
+
+            highlight.scrollTop = input.scrollTop;
+            highlight.scrollLeft = input.scrollLeft;
+        }
+
+        async function saveSecretJson() {
+            if (!currentSecret) {
+                showToast('Please select a secret first', 'error');
+                return;
+            }
+
+            const saveBtn = document.getElementById('saveJsonBtn');
+            const input = document.getElementById('jsonEditorInput');
+            const originalText = saveBtn.textContent;
+
+            let parsedJson;
+            try {
+                parsedJson = JSON.parse(input.value);
+            } catch (error) {
+                showToast('Invalid JSON format', 'error');
+                return;
+            }
+
+            if (!parsedJson || Array.isArray(parsedJson) || typeof parsedJson !== 'object') {
+                showToast('Secret JSON must be a top-level object', 'error');
+                return;
+            }
+
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+
+            try {
+                const response = await authenticatedFetch('/api/secrets/update-json', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: currentSecret,
+                        mount_point: currentMountPoint,
+                        data: parsedJson
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    currentSecretData = parsedJson;
+                    closeJsonEditorModal();
+                    showToast('Secret JSON updated successfully');
+                    currentVersion = null;
+                    await loadSecret(currentSecret, null);
+                } else {
+                    showToast(result.error || 'Failed to update secret JSON', 'error');
+                }
+            } catch (error) {
+                showToast('Error updating secret JSON', 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = originalText;
+            }
+        }
+
         // --- Delete Key Functions ---
 
         function showDeleteConfirmModal(keyName) {
@@ -4516,7 +4973,7 @@
             }
 
             try {
-                const response = await fetch('/api/secrets/delete-key', {
+                const response = await authenticatedFetch('/api/secrets/delete-key', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -4560,7 +5017,7 @@
             }
 
             try {
-                const response = await fetch('/api/secrets/delete', {
+                const response = await authenticatedFetch('/api/secrets/delete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -4705,7 +5162,7 @@
                 // Search based on current mode
                 if (currentMode === 'kv') {
                     // Search secrets
-                    const response = await fetch(`/api/secrets/search?q=${encodeURIComponent(query)}&mount_point=secret`);
+                    const response = await authenticatedFetch(`/api/secrets/search?q=${encodeURIComponent(query)}&mount_point=secret`);
                     const data = await response.json();
                     
                     if (data.success && data.results.length > 0) {
@@ -4714,7 +5171,7 @@
                     }
                 } else {
                     // Search database roles
-                    const response = await fetch(`/api/database/roles/search?q=${encodeURIComponent(query)}`);
+                    const response = await authenticatedFetch(`/api/database/roles/search?q=${encodeURIComponent(query)}`);
                     const data = await response.json();
                     
                     if (data.success && data.results.length > 0) {
@@ -4888,22 +5345,11 @@
             document.querySelectorAll('.tree-item').forEach(item => {
                 item.classList.remove('active');
             });
-            
-            // Find and highlight the current secret
-            // We need to match by the secret name at the end of the path
-            const secretName = secretPath.split('/').filter(p => p).pop();
-            
+
+            // Find and highlight the current secret by its full path
             document.querySelectorAll('.tree-item').forEach(item => {
-                // Check if this is a secret (not a folder) and matches our path
-                if (!item.classList.contains('folder')) {
-                    const onclick = item.getAttribute('onclick');
-                    if (onclick) {
-                        // Extract the path from onclick="loadSecret('path')"
-                        const match = onclick.match(/loadSecret\('([^']+)'\)/);
-                        if (match && match[1] === secretPath) {
-                            item.classList.add('active');
-                        }
-                    }
+                if (item.dataset.itemType === 'secret' && item.dataset.path === secretPath) {
+                    item.classList.add('active');
                 }
             });
         }
@@ -4984,7 +5430,7 @@
             try {
                 listEl.innerHTML = '<div style="padding: 20px; display: flex; justify-content: center;"><div class="spinner"></div></div>';
                 
-                const response = await fetch('/api/database/roles');
+                const response = await authenticatedFetch('/api/database/roles');
                 const data = await response.json();
                 
                 if (response.status === 401) {
@@ -5121,7 +5567,7 @@
             `;
             
             try {
-                const response = await fetch(`/api/database/creds/${encodeURIComponent(roleName)}`, {
+                const response = await authenticatedFetch(`/api/database/creds/${encodeURIComponent(roleName)}`, {
                     method: 'POST'
                 });
                 
@@ -5149,7 +5595,7 @@
             let mcpTooltip = 'Checking PostgreSQL MCP config...';
 
             try {
-                const mcpCheckResponse = await fetch('/api/database/check-mcp-config');
+                const mcpCheckResponse = await authenticatedFetch('/api/database/check-mcp-config');
                 const mcpCheckData = await mcpCheckResponse.json();
 
                 if (mcpCheckData.success && mcpCheckData.exists) {
@@ -5285,7 +5731,7 @@
             }
 
             try {
-                const response = await fetch('/api/database/sync-to-mcp', {
+                const response = await authenticatedFetch('/api/database/sync-to-mcp', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
