@@ -4086,9 +4086,14 @@
                 const data = await response.json();
                 if (data.success) {
                     showToast(`Key "${key}" added successfully`);
-                    // Re-enable Add Key button before reloading
+                    // Restore button state before reloading so the UI doesn't get stuck
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                     document.getElementById('addKeyBtn').disabled = false;
-                    loadSecret(currentSecret); // Reload entire secret
+                    document.querySelectorAll('.kv-item').forEach(item => {
+                        item.classList.remove('editing-mode');
+                    });
+                    await loadSecret(currentSecret); // Reload entire secret
                 } else {
                     // Re-enable button and Add Key button on error
                     btn.disabled = false;
@@ -4146,9 +4151,14 @@
                 const data = await response.json();
                 if (data.success) {
                     showToast(`Key "${key}" updated successfully`);
-                    // Re-enable Add Key button before reloading
+                    // Restore button state before reloading so the UI doesn't get stuck
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                     document.getElementById('addKeyBtn').disabled = false;
-                    loadSecret(currentSecret); // Reload entire secret
+                    document.querySelectorAll('.kv-item').forEach(item => {
+                        item.classList.remove('editing-mode');
+                    });
+                    await loadSecret(currentSecret); // Reload entire secret
                 } else {
                     // Re-enable button and Add Key button on error
                     btn.disabled = false;
