@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vault Manager</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
     <style>
         :root {
             /* Dark Mode (Default) */
@@ -1009,56 +1013,83 @@
             overflow-wrap: anywhere;
             word-break: break-word;
             tab-size: 2;
-            position: relative;
-            z-index: 1;
-            background: transparent;
-            color: transparent;
-            caret-color: var(--text-primary);
-        }
-
-        .json-editor-textarea::selection {
-            background: rgba(59, 130, 246, 0.22);
-        }
-
-        .json-editor-highlight {
-            position: absolute;
-            inset: 0;
-            margin: 0;
-            padding: 10px 14px 10px 14px;
+            padding: 10px 14px;
+            padding-right: 14px;
             font-family: var(--font-mono);
             font-size: 14px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
-            word-break: break-word;
-            tab-size: 2;
-            color: var(--text-primary);
-            pointer-events: none;
-            overflow: hidden;
             box-sizing: border-box;
         }
 
-        .json-token-key {
-            color: #2563eb;
-            font-weight: 600;
+        .json-editor-surface .CodeMirror {
+            height: min(68vh, 720px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-input);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            line-height: 1.6;
+            box-shadow: var(--shadow-sm);
         }
 
-        .json-token-string {
+        .json-editor-surface .CodeMirror-focused {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .json-editor-surface .CodeMirror-scroll {
+            padding: 10px 0;
+        }
+
+        .json-editor-surface .CodeMirror-gutters {
+            background: rgba(148, 163, 184, 0.08);
+            border-right: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .json-editor-surface .CodeMirror-linenumber {
+            color: var(--text-muted);
+        }
+
+        .cm-s-vault.CodeMirror {
+            background: var(--bg-input);
+            color: var(--text-primary);
+        }
+
+        .cm-s-vault .CodeMirror-cursor {
+            border-left: 2px solid var(--primary);
+        }
+
+        .cm-s-vault .CodeMirror-selected {
+            background: rgba(59, 130, 246, 0.22);
+        }
+
+        .cm-s-vault .CodeMirror-matchingbracket {
+            color: var(--success) !important;
+        }
+
+        .cm-s-vault .cm-property {
+            color: #2563eb;
+        }
+
+        .cm-s-vault .cm-string {
             color: #0f766e;
         }
 
-        .json-token-number {
+        .cm-s-vault .cm-number {
             color: #c2410c;
         }
 
-        .json-token-boolean {
+        .cm-s-vault .cm-atom {
             color: #047857;
-            font-weight: 600;
         }
 
-        .json-token-null {
-            color: var(--text-muted);
-            font-style: italic;
+        [data-theme="light"] .cm-s-vault .cm-string {
+            color: #0f766e;
+        }
+
+        [data-theme="light"] .cm-s-vault .cm-number {
+            color: #c2410c;
         }
 
         .json-editor-help {
@@ -2770,8 +2801,7 @@
             <div class="form-group">
                 <label class="label">NEW VERSION JSON</label>
                 <div class="json-editor-surface">
-                    <pre class="json-editor-highlight" id="jsonEditorHighlight" aria-hidden="true"></pre>
-                    <textarea class="input textarea-input json-editor-textarea" id="jsonEditorInput" spellcheck="false" oninput="updateJsonEditorHighlight()" onscroll="syncJsonEditorScroll()"></textarea>
+                    <textarea class="input textarea-input json-editor-textarea" id="jsonEditorInput" spellcheck="false"></textarea>
                 </div>
                 <div class="json-editor-help">
                     Provide a valid top-level JSON object. Saving will write the full payload as a new secret version.
@@ -3044,6 +3074,7 @@
         let currentMountPoint = 'secret';
         let currentVersion = null; // Track selected version
         let availableVersions = []; // Store available versions
+        let jsonEditor = null;
 
         // --- Mode Management (KV vs DB Creds) ---
         let currentMode = 'kv'; // 'kv' or 'db'
@@ -3230,6 +3261,9 @@
         function toggleTheme() {
             const current = document.documentElement.getAttribute('data-theme');
             setTheme(current === 'light' ? 'dark' : 'light');
+            if (jsonEditor) {
+                requestAnimationFrame(() => jsonEditor.refresh());
+            }
         }
 
         function updateThemeIcon(theme) {
@@ -4836,9 +4870,30 @@
                 return;
             }
 
-            document.getElementById('jsonEditorInput').value = JSON.stringify(currentSecretData, null, 2);
-            updateJsonEditorHighlight();
+            const initialValue = JSON.stringify(currentSecretData, null, 2);
+            const input = document.getElementById('jsonEditorInput');
+            const editor = ensureJsonEditor();
+
+            if (editor) {
+                editor.setValue(initialValue);
+                editor.clearHistory();
+            } else if (input) {
+                input.value = initialValue;
+            }
+
             document.getElementById('jsonEditorModal').classList.add('active');
+
+            requestAnimationFrame(() => {
+                const activeEditor = jsonEditor || ensureJsonEditor();
+                if (activeEditor) {
+                    activeEditor.refresh();
+                    activeEditor.focus();
+                    activeEditor.setCursor({ line: 0, ch: 0 });
+                } else if (input) {
+                    input.focus();
+                    input.setSelectionRange(0, 0);
+                }
+            });
         }
 
         function closeJsonEditorModal() {
@@ -4851,51 +4906,33 @@
             }
         }
 
-        function syntaxHighlightJsonEditor(value) {
-            const tokenRegex = /"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?/g;
-            let result = '';
-            let lastIndex = 0;
-            let match;
-
-            while ((match = tokenRegex.exec(value)) !== null) {
-                result += escapeHtml(value.slice(lastIndex, match.index));
-
-                const token = match[0];
-                let tokenClass = 'json-token-string';
-                if (match[1]) {
-                    tokenClass = 'json-token-key';
-                } else if (token === 'true' || token === 'false') {
-                    tokenClass = 'json-token-boolean';
-                } else if (token === 'null') {
-                    tokenClass = 'json-token-null';
-                } else if (/^-?\d/.test(token)) {
-                    tokenClass = 'json-token-number';
-                }
-
-                result += `<span class="${tokenClass}">${escapeHtml(token)}</span>`;
-                lastIndex = match.index + token.length;
+        function ensureJsonEditor() {
+            if (jsonEditor) {
+                return jsonEditor;
             }
 
-            result += escapeHtml(value.slice(lastIndex));
-            return result || ' ';
-        }
+            if (typeof CodeMirror === 'undefined') {
+                return null;
+            }
 
-        function updateJsonEditorHighlight() {
             const input = document.getElementById('jsonEditorInput');
-            const highlight = document.getElementById('jsonEditorHighlight');
-            if (!input || !highlight) return;
+            if (!input) {
+                return null;
+            }
 
-            highlight.innerHTML = syntaxHighlightJsonEditor(input.value);
-            syncJsonEditorScroll();
-        }
+            jsonEditor = CodeMirror.fromTextArea(input, {
+                mode: { name: 'javascript', json: true },
+                theme: 'vault',
+                lineNumbers: true,
+                lineWrapping: true,
+                indentUnit: 2,
+                tabSize: 2,
+                smartIndent: true,
+                matchBrackets: true,
+            });
 
-        function syncJsonEditorScroll() {
-            const input = document.getElementById('jsonEditorInput');
-            const highlight = document.getElementById('jsonEditorHighlight');
-            if (!input || !highlight) return;
-
-            highlight.scrollTop = input.scrollTop;
-            highlight.scrollLeft = input.scrollLeft;
+            jsonEditor.getWrapperElement().setAttribute('aria-label', 'Secret JSON editor');
+            return jsonEditor;
         }
 
         async function saveSecretJson() {
@@ -4906,11 +4943,13 @@
 
             const saveBtn = document.getElementById('saveJsonBtn');
             const input = document.getElementById('jsonEditorInput');
+            const editor = jsonEditor || ensureJsonEditor();
             const originalText = saveBtn.textContent;
+            const editorValue = editor ? editor.getValue() : input.value;
 
             let parsedJson;
             try {
-                parsedJson = JSON.parse(input.value);
+                parsedJson = JSON.parse(editorValue);
             } catch (error) {
                 showToast('Invalid JSON format', 'error');
                 return;
