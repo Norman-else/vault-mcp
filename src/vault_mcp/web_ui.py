@@ -65,7 +65,7 @@ class VaultWebUI:
         
         # Timeout management
         self.last_access_time = time.time()
-        timeout_minutes = int(os.getenv('WEB_UI_TIMEOUT_MINUTES', '10'))
+        timeout_minutes = int(os.getenv('WEB_UI_TIMEOUT_MINUTES', '480'))
         self.timeout_seconds = timeout_minutes * 60
         self.check_interval_seconds = int(os.getenv('WEB_UI_CHECK_INTERVAL_SECONDS', '1'))
         self.server = None

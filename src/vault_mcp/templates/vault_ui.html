@@ -2718,7 +2718,7 @@
             </div>
             <h1 class="timeout-notice-title">Web UI Auto-Closed</h1>
             <p class="timeout-notice-description" id="timeoutNoticeDescription">
-                Web UI has been automatically closed after <span id="timeoutMinutes">10</span> minutes of inactivity.
+                Web UI has been automatically closed after <span id="timeoutDuration">8 hours</span> of inactivity.
             </p>
             <div class="timeout-notice-instructions">
                 <h2 class="timeout-instructions-title">To reopen the Web UI:</h2>
@@ -3056,6 +3056,32 @@
             oneMinute: false,
             thirtySeconds: false
         };
+
+        function formatTimeoutDuration(timeoutSeconds) {
+            const totalMinutes = Math.floor(timeoutSeconds / 60);
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+
+            if (hours > 0 && minutes > 0) {
+                return `${hours} hour${hours > 1 ? 's' : ''} ${minutes} minute${minutes > 1 ? 's' : ''}`;
+            }
+            if (hours > 0) {
+                return `${hours} hour${hours > 1 ? 's' : ''}`;
+            }
+            return `${totalMinutes} minute${totalMinutes !== 1 ? 's' : ''}`;
+        }
+
+        function formatTimeoutCountdown(remainingSeconds) {
+            const hours = Math.floor(remainingSeconds / 3600);
+            const minutes = Math.floor((remainingSeconds % 3600) / 60);
+            const seconds = remainingSeconds % 60;
+
+            if (hours > 0) {
+                return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
+
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
         
         async function loadEnvironment() {
             try {
@@ -3087,11 +3113,11 @@
                 
                 if (!data.success) {
                     // If API call failed, server might be down - show closure page
-                    // Use cached timeout value if available, otherwise use default (10 minutes)
+                    // Use cached timeout value if available, otherwise use default (8 hours)
                     if (countdownElement) {
                         countdownElement.style.display = 'none';
                     }
-                    showTimeoutClosurePage(cachedTimeoutSeconds || 600);
+                    showTimeoutClosurePage(cachedTimeoutSeconds || 28800);
                     return;
                 }
                 
@@ -3106,9 +3132,9 @@
                 if (timeoutSeconds) {
                     cachedTimeoutSeconds = timeoutSeconds;
                     // Update the initial display value in HTML to match backend configuration
-                    const timeoutMinutesElement = document.getElementById('timeoutMinutes');
-                    if (timeoutMinutesElement) {
-                        timeoutMinutesElement.textContent = Math.floor(timeoutSeconds / 60);
+                    const timeoutDurationElement = document.getElementById('timeoutDuration');
+                    if (timeoutDurationElement) {
+                        timeoutDurationElement.textContent = formatTimeoutDuration(timeoutSeconds);
                     }
                 }
                 
@@ -3131,11 +3157,7 @@
                 
                 countdownElement.style.display = 'flex';
                 
-                // Format time as MM:SS
-                const minutes = Math.floor(remainingSeconds / 60);
-                const seconds = remainingSeconds % 60;
-                const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-                countdownText.textContent = formattedTime;
+                countdownText.textContent = formatTimeoutCountdown(remainingSeconds);
                 
                 // Update styling based on remaining time
                 countdownElement.classList.remove('warning', 'danger');
@@ -3152,12 +3174,12 @@
             } catch (error) {
                 console.error('Error updating timeout countdown:', error);
                 // On error, assume server is down and show closure page
-                // Use cached timeout value if available, otherwise use default (10 minutes)
+                // Use cached timeout value if available, otherwise use default (8 hours)
                 const countdownElement = document.getElementById('timeoutCountdown');
                 if (countdownElement) {
                     countdownElement.style.display = 'none';
                 }
-                showTimeoutClosurePage(cachedTimeoutSeconds || 600);
+                showTimeoutClosurePage(cachedTimeoutSeconds || 28800);
             }
         }
         
@@ -3213,14 +3235,13 @@
         function showTimeoutClosurePage(timeoutSeconds) {
             const overlay = document.getElementById('timeoutOverlay');
             const appShell = document.querySelector('.app-shell');
-            const timeoutMinutes = Math.floor(timeoutSeconds / 60);
             
             if (!overlay) return;
             
-            // Update timeout minutes in the description
-            const timeoutMinutesElement = document.getElementById('timeoutMinutes');
-            if (timeoutMinutesElement) {
-                timeoutMinutesElement.textContent = timeoutMinutes;
+            // Update timeout duration in the description
+            const timeoutDurationElement = document.getElementById('timeoutDuration');
+            if (timeoutDurationElement) {
+                timeoutDurationElement.textContent = formatTimeoutDuration(timeoutSeconds);
             }
             
             // Hide main content
