@@ -4933,28 +4933,166 @@
             });
 
             jsonEditor.getWrapperElement().setAttribute('aria-label', 'Secret JSON editor');
+            jsonEditor.on('beforeChange', (editor, change) => {
+                handleJsonStringPasteChange(editor, change);
+            });
             return jsonEditor;
+        }
+
+        function isJsonStringValueToken(editor, position) {
+            if (!position) {
+                return false;
+            }
+
+            let token = editor.getTokenAt(position);
+            if ((!token.type || !token.type.includes('string')) && position.ch > 0) {
+                token = editor.getTokenAt({ line: position.line, ch: position.ch - 1 });
+            }
+
+            if (!token.type || !token.type.includes('string')) {
+                return false;
+            }
+
+            const lineText = editor.getLine(position.line);
+            const beforeToken = lineText.slice(0, token.start);
+            return /:\s*$/.test(beforeToken);
+        }
+
+        function getJsonStringValueToken(editor, position) {
+            if (!position) {
+                return null;
+            }
+
+            let token = editor.getTokenAt(position);
+            if ((!token.type || !token.type.includes('string')) && position.ch > 0) {
+                token = editor.getTokenAt({ line: position.line, ch: position.ch - 1 });
+            }
+
+            if (!token.type || !token.type.includes('string')) {
+                return null;
+            }
+
+            const lineText = editor.getLine(position.line);
+            const beforeToken = lineText.slice(0, token.start);
+            if (!/:\s*$/.test(beforeToken)) {
+                return null;
+            }
+
+            return token;
+        }
+
+        function handleJsonStringPasteChange(editor, change) {
+            if (!change || change.origin !== 'paste') {
+                return;
+            }
+
+            const clipboardText = change.text.join('\n');
+            if (!clipboardText) {
+                return;
+            }
+
+            const trimmedText = clipboardText.trim();
+            if (!(trimmedText.startsWith('{') || trimmedText.startsWith('['))) {
+                return;
+            }
+
+            try {
+                JSON.parse(trimmedText);
+            } catch (error) {
+                return;
+            }
+
+            const token = getJsonStringValueToken(editor, change.from) || getJsonStringValueToken(editor, change.to);
+            if (!token) {
+                return;
+            }
+
+            const isReplacingWholeToken =
+                change.from.line === change.to.line &&
+                change.from.line === change.to.line &&
+                change.from.ch <= token.start &&
+                change.to.ch >= token.end;
+
+            const replacement = isReplacingWholeToken
+                ? JSON.stringify(clipboardText)
+                : JSON.stringify(clipboardText).slice(1, -1);
+            change.update(change.from, change.to, [replacement]);
+        }
+
+        function getSecretJsonEditorValue() {
+            const input = document.getElementById('jsonEditorInput');
+            const editor = jsonEditor || ensureJsonEditor();
+
+            if (editor) {
+                editor.save();
+                return editor.getValue();
+            }
+
+            if (input && typeof input.value === 'string') {
+                return input.value;
+            }
+
+            return '';
+        }
+
+        function getJsonErrorMessage(error, rawValue) {
+            if (!error || !(error instanceof Error)) {
+                return 'Invalid JSON format';
+            }
+
+            if (error.message === 'Secret JSON must be a top-level object') {
+                return error.message;
+            }
+
+            const positionMatch = error.message.match(/position\s+(\d+)/i);
+            if (!positionMatch) {
+                return error.message || 'Invalid JSON format';
+            }
+
+            const position = Number.parseInt(positionMatch[1], 10);
+            if (!Number.isFinite(position) || position < 0) {
+                return error.message || 'Invalid JSON format';
+            }
+
+            const beforeError = rawValue.slice(0, position);
+            const line = beforeError.split('\n').length;
+            const lastNewlineIndex = beforeError.lastIndexOf('\n');
+            const column = position - lastNewlineIndex;
+
+            return `Invalid JSON at line ${line}, column ${column}`;
+        }
+
+        function parseSecretJsonEditorValue() {
+            const rawValue = getSecretJsonEditorValue().replace(/^\uFEFF/, '');
+
+            try {
+                const parsedJson = JSON.parse(rawValue);
+                if (!parsedJson || Array.isArray(parsedJson) || typeof parsedJson !== 'object') {
+                    throw new Error('Secret JSON must be a top-level object');
+                }
+
+                return { success: true, rawValue, parsedJson };
+            } catch (error) {
+                return {
+                    success: false,
+                    rawValue,
+                    error,
+                    message: getJsonErrorMessage(error, rawValue)
+                };
+            }
         }
 
         function prettifySecretJson() {
             const input = document.getElementById('jsonEditorInput');
             const editor = jsonEditor || ensureJsonEditor();
-            const currentValue = editor ? editor.getValue() : input.value;
+            const parseResult = parseSecretJsonEditorValue();
 
-            let parsedJson;
-            try {
-                parsedJson = JSON.parse(currentValue);
-            } catch (error) {
-                showToast('Invalid JSON format', 'error');
+            if (!parseResult.success) {
+                showToast(parseResult.message || 'Invalid JSON format', 'error');
                 return;
             }
 
-            if (!parsedJson || Array.isArray(parsedJson) || typeof parsedJson !== 'object') {
-                showToast('Secret JSON must be a top-level object', 'error');
-                return;
-            }
-
-            const prettifiedValue = JSON.stringify(parsedJson, null, 2);
+            const prettifiedValue = JSON.stringify(parseResult.parsedJson, null, 2);
             if (editor) {
                 editor.setValue(prettifiedValue);
                 editor.focus();
@@ -4971,21 +5109,11 @@
             }
 
             const saveBtn = document.getElementById('saveJsonBtn');
-            const input = document.getElementById('jsonEditorInput');
-            const editor = jsonEditor || ensureJsonEditor();
             const originalText = saveBtn.textContent;
-            const editorValue = editor ? editor.getValue() : input.value;
+            const parseResult = parseSecretJsonEditorValue();
 
-            let parsedJson;
-            try {
-                parsedJson = JSON.parse(editorValue);
-            } catch (error) {
-                showToast('Invalid JSON format', 'error');
-                return;
-            }
-
-            if (!parsedJson || Array.isArray(parsedJson) || typeof parsedJson !== 'object') {
-                showToast('Secret JSON must be a top-level object', 'error');
+            if (!parseResult.success) {
+                showToast(parseResult.message || 'Invalid JSON format', 'error');
                 return;
             }
 
@@ -4999,13 +5127,13 @@
                     body: JSON.stringify({
                         path: currentSecret,
                         mount_point: currentMountPoint,
-                        data: parsedJson
+                        data: parseResult.parsedJson
                     })
                 });
 
                 const result = await response.json();
                 if (result.success) {
-                    currentSecretData = parsedJson;
+                    currentSecretData = parseResult.parsedJson;
                     closeJsonEditorModal();
                     showToast('Secret JSON updated successfully');
                     currentVersion = null;
