@@ -2809,6 +2809,7 @@
             </div>
             <div class="modal-actions">
                 <button class="btn-secondary" onclick="closeJsonEditorModal()">Cancel</button>
+                <button class="btn-secondary" onclick="prettifySecretJson()">Prettify</button>
                 <button class="btn-primary" id="saveJsonBtn" onclick="saveSecretJson()">Create Version</button>
             </div>
         </div>
@@ -4933,6 +4934,34 @@
 
             jsonEditor.getWrapperElement().setAttribute('aria-label', 'Secret JSON editor');
             return jsonEditor;
+        }
+
+        function prettifySecretJson() {
+            const input = document.getElementById('jsonEditorInput');
+            const editor = jsonEditor || ensureJsonEditor();
+            const currentValue = editor ? editor.getValue() : input.value;
+
+            let parsedJson;
+            try {
+                parsedJson = JSON.parse(currentValue);
+            } catch (error) {
+                showToast('Invalid JSON format', 'error');
+                return;
+            }
+
+            if (!parsedJson || Array.isArray(parsedJson) || typeof parsedJson !== 'object') {
+                showToast('Secret JSON must be a top-level object', 'error');
+                return;
+            }
+
+            const prettifiedValue = JSON.stringify(parsedJson, null, 2);
+            if (editor) {
+                editor.setValue(prettifiedValue);
+                editor.focus();
+            } else if (input) {
+                input.value = prettifiedValue;
+                input.focus();
+            }
         }
 
         async function saveSecretJson() {
