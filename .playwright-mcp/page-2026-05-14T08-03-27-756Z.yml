@@ -1,0 +1,80 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e5]:
+        - img [ref=e6]
+        - generic [ref=e9]: Vault Manager
+      - generic [ref=e10]:
+        - button "New Secret" [ref=e12] [cursor=pointer]:
+          - img [ref=e13]
+          - text: New Secret
+        - generic [ref=e15]:
+          - button "KV Secrets" [ref=e16] [cursor=pointer]:
+            - img [ref=e17]
+            - generic [ref=e20]: KV Secrets
+          - button "Database Credentials" [ref=e21] [cursor=pointer]:
+            - img [ref=e22]
+            - generic [ref=e26]: Database Credentials
+        - generic [ref=e28]: Secrets Explorer
+      - button "Switch to Dark" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]
+        - generic [ref=e36]: Switch to Dark
+    - main [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e40]: KV Secrets
+        - generic [ref=e41]:
+          - button "Search (⌘K / Ctrl+K)" [ref=e42] [cursor=pointer]:
+            - img [ref=e43]
+          - generic "Auto-shutdown countdown" [ref=e46]:
+            - img [ref=e47]
+            - generic [ref=e50]: 07:59:59
+          - generic [ref=e51]:
+            - generic [ref=e54]: Loading...
+            - button "Switch Environment" [ref=e55] [cursor=pointer]:
+              - img [ref=e56]
+              - text: Switch Environment
+      - generic [ref=e61]:
+        - img [ref=e64]
+        - generic [ref=e72]:
+          - generic [ref=e73]: Select a Secret
+          - generic [ref=e74]: Choose a secret from the sidebar or create a new one to get started. Your secrets are securely stored in Vault.
+          - generic [ref=e75]:
+            - button "Create Secret" [ref=e76] [cursor=pointer]:
+              - img [ref=e77]
+              - text: Create Secret
+            - button "Search Secrets" [ref=e79] [cursor=pointer]:
+              - img [ref=e80]
+              - text: Search Secrets
+          - generic [ref=e83]:
+            - generic [ref=e84]:
+              - generic [ref=e85]: "-"
+              - text: Total Secrets
+            - generic [ref=e86]:
+              - generic [ref=e87]: "-"
+              - text: Folders
+  - generic [ref=e89]: Operation successful
+  - generic:
+    - generic:
+      - generic:
+        - img
+        - textbox "Search secrets and keys..."
+      - generic:
+        - generic:
+          - generic:
+            - img
+            - generic: Navigate
+            - generic: ↑↓
+          - generic:
+            - generic: Select
+            - generic: Enter
+          - generic:
+            - generic: Close
+            - generic: Esc
+        - generic:
+          - generic: "Environment:"
+          - generic: "-"
+      - generic:
+        - generic:
+          - img
+          - generic: Start typing to search
+          - generic: Search across all secrets and keys in your current environment
