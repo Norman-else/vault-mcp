@@ -4075,8 +4075,21 @@
             });
         }
 
+        function clearSidebarActiveState(item) {
+            if (!item) return;
+
+            const selector = item.classList.contains('db-role-item')
+                ? '.db-role-item.active'
+                : '.tree-item.active';
+
+            document.querySelectorAll(selector).forEach(activeItem => {
+                activeItem.classList.remove('active');
+            });
+        }
+
         function setSidebarLoadingState(item) {
             clearSidebarLoadingState();
+            clearSidebarActiveState(item);
             if (item) {
                 item.classList.add('loading');
             }
