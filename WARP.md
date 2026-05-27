@@ -69,7 +69,7 @@ Example MCP server configuration for Windows (in Warp/Cursor settings):
 1. User requests login to specific environment (dev/sat/prod)
 2. Server switches kubectl context if K8S_CONTEXT is configured
 3. Server calls `aws-vault export <profile>` to get temporary AWS credentials
-4. User inputs MFA code when prompted (30-second timeout)
+4. User inputs MFA code when prompted (Web UI waits without a timeout limit)
 5. Server uses AWS credentials to authenticate to Vault via IAM
 6. Vault token is cached for subsequent operations
 
@@ -116,14 +116,14 @@ self.environments = {
 All environment-specific settings (Vault URL, AWS profile, k8s context) are looked up dynamically based on the selected environment.
 
 ### External Dependency Handling
-External dependencies (aws-vault, kubectl) are called via subprocess with proper timeout and error handling:
+External dependencies (aws-vault, kubectl) are called via subprocess with proper timeout and error handling. Web UI MFA prompts wait without a timeout limit so users can complete the popup at their own pace; non-Web UI calls still use a bounded wait:
 ```python
 result = subprocess.run(
     cmd,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
     text=True,
-    timeout=30  # MFA input timeout
+    timeout=30  # Non-Web UI MFA input timeout
 )
 ```
 
@@ -234,8 +234,8 @@ All environment configs are in `VaultMCPServer.__init__()`. The `self.environmen
 ## Troubleshooting
 
 ### "aws-vault command timed out"
-- User didn't input MFA within 30 seconds
-- Solution: Retry and input MFA quickly when prompted
+- Applies to non-Web UI login calls that still use a bounded MFA wait
+- Solution: Retry and input MFA when prompted, or use the Web UI for an MFA popup without a timeout limit
 
 ### "Failed to authenticate with Vault"
 - Check aws-vault is installed and configured

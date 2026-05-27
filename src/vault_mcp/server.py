@@ -847,9 +847,12 @@ PY
             logger.info(
                 f"Trying to get credentials via aws-vault for profile: {aws_profile}"
             )
-            logger.info(
-                "⏳ If MFA prompt appears, please enter your code (90 seconds timeout)..."
-            )
+            if from_web_ui:
+                logger.info("⏳ If MFA prompt appears, please enter your code...")
+            else:
+                logger.info(
+                    "⏳ If MFA prompt appears, please enter your code (30 seconds timeout)..."
+                )
 
             # Execute aws-vault export to get credentials (may require MFA input)
             cmd = [aws_vault_path, "export", aws_profile, "--format=json"]
@@ -870,12 +873,8 @@ PY
                         creationflags=CREATE_NO_WINDOW,
                         env=env,
                     )
-                    try:
-                        stdout, stderr = process.communicate(timeout=90)
-                        returncode = process.returncode
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        raise
+                    stdout, stderr = process.communicate()
+                    returncode = process.returncode
                 elif system == "Darwin":
                     # macOS: aws-vault uses native osascript dialog for MFA
                     env = os.environ.copy()
@@ -887,12 +886,8 @@ PY
                         text=True,
                         env=env,
                     )
-                    try:
-                        stdout, stderr = process.communicate(timeout=90)
-                        returncode = process.returncode
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        raise
+                    stdout, stderr = process.communicate()
+                    returncode = process.returncode
                 else:
                     # Linux/other: Standard execution
                     result = subprocess.run(
@@ -900,7 +895,6 @@ PY
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
-                        timeout=90,
                     )
                     stdout = result.stdout
                     stderr = result.stderr
