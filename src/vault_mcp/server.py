@@ -114,6 +114,7 @@ class VaultMCPServer:
         self._auth_check_cached_result: Optional[bool] = None
         self._auth_check_cached_at = 0.0
         self._auth_check_cached_client_id: Optional[int] = None
+        self._last_awsvault_error: Optional[str] = None
 
         # Slack configuration
         self.slack_enabled = os.getenv("SLACK_ENABLED", "false").lower() == "true"
@@ -826,6 +827,52 @@ PY
         
         return None
 
+    def _build_awsvault_credentials_command(
+        self,
+        aws_vault_path: str,
+        aws_profile: str,
+        system: str,
+        from_web_ui: bool,
+    ) -> tuple[list[str], dict[str, Any]]:
+        """Build the aws-vault credential command for the current runtime."""
+        run_kwargs: dict[str, Any] = {
+            "capture_output": True,
+            "text": True,
+        }
+
+        if not from_web_ui:
+            run_kwargs["timeout"] = 30
+
+        if from_web_ui and system == "Windows":
+            run_kwargs["creationflags"] = 0x08000000
+            return (
+                [
+                    aws_vault_path,
+                    "exec",
+                    aws_profile,
+                    "--json",
+                    "--prompt=wincredui",
+                ],
+                run_kwargs,
+            )
+
+        if from_web_ui and system == "Darwin":
+            return (
+                [
+                    aws_vault_path,
+                    "exec",
+                    aws_profile,
+                    "--json",
+                    "--prompt=osascript",
+                ],
+                run_kwargs,
+            )
+
+        return (
+            [aws_vault_path, "export", aws_profile, "--format=json"],
+            run_kwargs,
+        )
+
     def _get_aws_credentials_via_awsvault(self, aws_profile: str, from_web_ui: bool = False):
         """Proactively obtain AWS credentials via aws-vault.
 
@@ -839,9 +886,11 @@ PY
         aws_vault_path = self._find_aws_vault_path()
         if not aws_vault_path:
             logger.warning("aws-vault executable not found in common paths")
+            self._last_awsvault_error = "aws-vault executable not found"
             return None
         
         logger.info(f"Using aws-vault at: {aws_vault_path}")
+        self._last_awsvault_error = None
         
         try:
             logger.info(
@@ -854,66 +903,22 @@ PY
                     "⏳ If MFA prompt appears, please enter your code (30 seconds timeout)..."
                 )
 
-            # Execute aws-vault export to get credentials (may require MFA input)
-            cmd = [aws_vault_path, "export", aws_profile, "--format=json"]
             system = platform.system()
-            
-            # When called from Web UI, need special handling to show MFA GUI prompts
-            if from_web_ui:
-                if system == "Windows":
-                    # Windows: Use wincredui for native GUI MFA prompt, no console window
-                    CREATE_NO_WINDOW = 0x08000000
-                    env = os.environ.copy()
-                    env["AWS_VAULT_PROMPT"] = "wincredui"  # Force Windows Credential UI
-                    process = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        creationflags=CREATE_NO_WINDOW,
-                        env=env,
-                    )
-                    stdout, stderr = process.communicate()
-                    returncode = process.returncode
-                elif system == "Darwin":
-                    # macOS: aws-vault uses native osascript dialog for MFA
-                    env = os.environ.copy()
-                    env["AWS_VAULT_PROMPT"] = "osascript"  # Force osascript prompt method
-                    process = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        env=env,
-                    )
-                    stdout, stderr = process.communicate()
-                    returncode = process.returncode
-                else:
-                    # Linux/other: Standard execution
-                    result = subprocess.run(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                    )
-                    stdout = result.stdout
-                    stderr = result.stderr
-                    returncode = result.returncode
-            else:
-                # Called from MCP/AI: Use standard subprocess which allows terminal MFA
-                result = subprocess.run(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    timeout=30,
-                )
-                stdout = result.stdout
-                stderr = result.stderr
-                returncode = result.returncode
+            cmd, run_kwargs = self._build_awsvault_credentials_command(
+                aws_vault_path=aws_vault_path,
+                aws_profile=aws_profile,
+                system=system,
+                from_web_ui=from_web_ui,
+            )
+            result = subprocess.run(cmd, **run_kwargs)
+            stdout = result.stdout
+            stderr = result.stderr
+            returncode = result.returncode
 
             if returncode != 0:
-                logger.warning(f"aws-vault export failed: {stderr}")
+                error_detail = stderr.strip() or stdout.strip() or "aws-vault command failed"
+                self._last_awsvault_error = error_detail
+                logger.warning(f"aws-vault credential command failed: {error_detail}")
                 
                 # Clear aws-vault cache to ensure MFA prompt appears on next retry
                 # This prevents the issue where incorrect MFA entry blocks subsequent login attempts
@@ -937,6 +942,7 @@ PY
             # Parse JSON output
             creds_json = json.loads(stdout)
             logger.info("✓ Successfully obtained AWS credentials via aws-vault")
+            self._last_awsvault_error = None
 
             return {
                 "AWS_ACCESS_KEY_ID": creds_json.get("AccessKeyId"),
@@ -948,9 +954,11 @@ PY
             timeout = 90 if from_web_ui else 30
             logger.error(f"✗ aws-vault command timed out ({timeout} seconds)")
             logger.error("Please make sure you enter MFA code when prompted")
+            self._last_awsvault_error = f"aws-vault command timed out after {timeout} seconds"
             return None
         except Exception as e:
             logger.warning(f"Failed to get credentials via aws-vault: {e}")
+            self._last_awsvault_error = str(e)
             return None
 
     def _safe_format_data(self, data: dict, max_length: int = 2800) -> str:
@@ -1247,6 +1255,7 @@ PY
             # Method 1: Try to get credentials via aws-vault
             logger.info("Trying to get credentials from aws-vault...")
             aws_env = self._get_aws_credentials_via_awsvault(aws_profile, from_web_ui=from_web_ui)
+            awsvault_error = self._last_awsvault_error
 
             if aws_env and aws_env.get("AWS_ACCESS_KEY_ID"):
                 access_key = aws_env["AWS_ACCESS_KEY_ID"]
@@ -1271,7 +1280,10 @@ PY
                     logger.error(
                         "Then keep that terminal session open and retry in Cursor"
                     )
-                    raise ValueError("No AWS credentials found")
+                    error_message = "No AWS credentials found"
+                    if awsvault_error:
+                        error_message = f"{error_message} (aws-vault: {awsvault_error})"
+                    raise ValueError(error_message)
 
             logger.info(f"Using Vault role: {vault_role}")
 

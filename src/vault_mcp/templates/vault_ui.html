@@ -3903,7 +3903,7 @@
             
             // Show loading state
             msg.style.display = 'block';
-            msg.textContent = `Authenticating with ${env.toUpperCase()}... check your terminal for MFA if needed.`;
+            msg.textContent = `Authenticating with ${env.toUpperCase()}... if MFA is required, a system prompt should appear.`;
             msg.style.color = 'var(--text-muted)';
             
             // Disable buttons and hide selector
@@ -3995,7 +3995,7 @@
             const btn = document.getElementById('loginBtn');
             
             msg.style.display = 'block';
-            msg.textContent = `Authenticating with ${env.toUpperCase()}... check your terminal for MFA if needed.`;
+            msg.textContent = `Authenticating with ${env.toUpperCase()}... if MFA is required, a system prompt should appear.`;
             msg.style.color = 'var(--text-muted)';
             
             // Add loading state
