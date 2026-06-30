@@ -1554,6 +1554,47 @@ PY
             parsed_limit = default
         return min(max(parsed_limit, 1), 200)
 
+    def _db_request_fresh_seconds(self) -> int:
+        """Age (seconds) under which a pending request is 'fresh' / actionable."""
+        try:
+            hours = float(os.getenv("SLACK_DB_REQUEST_FRESH_HOURS", "24"))
+        except (TypeError, ValueError):
+            hours = 24.0
+        return int(max(hours, 0) * 3600)
+
+    def _db_request_lookback_seconds(self) -> int:
+        """How far back (seconds) to scan for pending requests, also the stale upper bound."""
+        try:
+            days = float(os.getenv("SLACK_DB_REQUEST_LOOKBACK_DAYS", "7"))
+        except (TypeError, ValueError):
+            days = 7.0
+        return int(max(days, 0) * 86400)
+
+    def _classify_db_request_age(self, request_ts: str) -> dict:
+        """Classify a request's age into fresh / stale tiers from its Slack ts."""
+        try:
+            request_epoch = float(request_ts)
+        except (TypeError, ValueError):
+            return {"age_seconds": None, "age_hours": None, "tier": "unknown", "stale": False}
+
+        age_seconds = max(0.0, time.time() - request_epoch)
+        fresh_cutoff = self._db_request_fresh_seconds()
+        lookback_cutoff = self._db_request_lookback_seconds()
+
+        if age_seconds <= fresh_cutoff:
+            tier = "fresh"
+        elif age_seconds <= lookback_cutoff:
+            tier = "stale"
+        else:
+            tier = "expired"
+
+        return {
+            "age_seconds": int(age_seconds),
+            "age_hours": round(age_seconds / 3600, 1),
+            "tier": tier,
+            "stale": tier != "fresh",
+        }
+
     def _slack_message_text(self, message: dict) -> str:
         """Extract searchable text from Slack message fields without returning it."""
         parts = []
@@ -1649,6 +1690,7 @@ PY
         normalized = self._normalize_slack_text(raw_text)
 
         env_match = re.search(r"\bEnv(?:ironment)?\s*:\s*([A-Za-z0-9_-]+)", normalized, re.IGNORECASE)
+        service_match = re.search(r"\bService\s*:\s*([A-Za-z0-9._-]+)", normalized, re.IGNORECASE)
         recipient_match = re.search(r"\bsent to\s+(.+?)\s+at\s+", normalized, re.IGNORECASE)
         sender_match = re.search(r"\sby\s+(.+?)\.?\s*$", normalized, re.IGNORECASE)
 
@@ -1659,6 +1701,7 @@ PY
                 or "New credentials sent" in normalized
             ),
             "environment": env_match.group(1).lower() if env_match else None,
+            "service": service_match.group(1).strip().lower() if service_match else None,
             "recipient_name": recipient_match.group(1).strip() if recipient_match else None,
             "sender_name": sender_match.group(1).strip() if sender_match else None,
         }
@@ -1684,6 +1727,7 @@ PY
         environment: str,
         recipient: dict,
         operator: Optional[dict] = None,
+        database: Optional[str] = None,
         limit: int = 100,
     ) -> dict:
         """Find whether a DB request has a later matching Vault audit notification."""
@@ -1742,6 +1786,7 @@ PY
             unique_messages.append(message)
 
         expected_env = environment.lower()
+        expected_service = database.strip().lower() if database else None
         operator = operator or {}
 
         for message in unique_messages:
@@ -1752,6 +1797,16 @@ PY
                 continue
             if not self._name_matches(recipient, audit["recipient_name"]):
                 continue
+
+            # Service-aware matching: when both the request and the notification
+            # name a service, they must agree. A notification for a different
+            # service to the same recipient/env is NOT a match for this request.
+            audit_service = audit.get("service")
+            if expected_service and audit_service and audit_service != expected_service:
+                continue
+            service_confirmed = bool(
+                expected_service and audit_service and audit_service == expected_service
+            )
 
             sender_matches = True
             if operator:
@@ -1766,6 +1821,26 @@ PY
                     "reason": (
                         "Found a later Vault notification for the same recipient "
                         "and environment, but the sender did not match exactly."
+                    ),
+                }
+
+            if expected_service and not service_confirmed:
+                # Recipient/env match, but the notification lacks a parseable
+                # Service field (e.g. older audit format), so we cannot confirm
+                # it was for THIS database. Flag for human confirmation instead
+                # of silently treating a different service as already processed.
+                return {
+                    "already_processed": True,
+                    "confidence": "medium",
+                    "processed_ts": audit["ts"],
+                    "processed_by": {
+                        "id": operator.get("id"),
+                        "name": audit["sender_name"] or operator.get("name"),
+                    },
+                    "reason": (
+                        "Found a later Vault notification matching the recipient and "
+                        "environment, but it did not include a Service field to confirm "
+                        "it was for this database."
                     ),
                 }
 
@@ -1792,6 +1867,7 @@ PY
         environment: str,
         recipient_user_id: str,
         operator_user_id: Optional[str] = None,
+        database: Optional[str] = None,
         limit: int = 100,
     ) -> str:
         """Return processed status for one DB credential request without exposing Slack messages."""
@@ -1832,6 +1908,7 @@ PY
             environment=environment,
             recipient=recipient,
             operator=operator,
+            database=database,
             limit=limit,
         )
 
@@ -1841,6 +1918,7 @@ PY
                 "channel_id": channel_id,
                 "request_ts": request_ts,
                 "environment": environment.lower(),
+                "database": database,
                 "recipient": recipient,
                 "status": status,
                 "raw_slack_messages_returned": False,
@@ -1932,6 +2010,7 @@ PY
                 environment=latest_request["environment"],
                 recipient=latest_request["recipient"],
                 operator=latest_request["operator"],
+                database=latest_request["database"],
                 limit=limit,
             )
 
@@ -1946,12 +2025,174 @@ PY
             indent=2,
         )
 
+    def _scan_db_request_messages(self, channel_id: str, oldest_ts: float) -> list:
+        """Page through channel history back to oldest_ts, returning raw messages."""
+        messages = []
+        cursor = None
+        # Bound the scan: at most 10 pages of 200 to avoid unbounded paging.
+        for _ in range(10):
+            kwargs = {
+                "channel": channel_id,
+                "limit": 200,
+                "oldest": f"{oldest_ts:.6f}",
+            }
+            if cursor:
+                kwargs["cursor"] = cursor
+            response = self.slack_client.conversations_history(**kwargs)
+            messages.extend(response.get("messages", []) or [])
+            cursor = (response.get("response_metadata") or {}).get("next_cursor")
+            if not cursor:
+                break
+        return messages
+
+    async def vault_get_pending_db_credential_requests(
+        self,
+        channel_id: Optional[str] = None,
+        include_stale: bool = True,
+        limit: int = 100,
+    ) -> str:
+        """Return all unprocessed DB credential requests for the operator, deduped and aged.
+
+        Requests sharing the same (environment, service, recipient) are collapsed to
+        the newest one. Each returned request carries an age tier (fresh/stale) so the
+        caller can require explicit confirmation for stale items.
+        """
+        if not SLACK_AVAILABLE or not self.slack_client:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "Slack is not configured. Set SLACK_ENABLED=true and "
+                        "SLACK_BOT_TOKEN in environment variables."
+                    ),
+                }
+            )
+
+        operator_user_id = self._get_slack_operator_user_id()
+        if not operator_user_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "No Slack operator user configured. Set "
+                        "SLACK_OPERATOR_USER_ID or SLACK_USER_ID."
+                    ),
+                }
+            )
+
+        resolved_channel_id = self._resolve_db_request_channel_id(channel_id)
+        if not resolved_channel_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "Could not resolve DB credential request channel. Set "
+                        "SLACK_DB_REQUEST_CHANNEL_ID or SLACK_DB_REQUEST_CHANNEL_NAME."
+                    ),
+                }
+            )
+
+        oldest_ts = max(0.0, time.time() - self._db_request_lookback_seconds())
+        try:
+            messages = self._scan_db_request_messages(resolved_channel_id, oldest_ts)
+        except SlackApiError as e:
+            logger.error(f"Slack API error while scanning DB requests: {e.response['error']}")
+            return json.dumps({"success": False, "error": f"Slack API error: {e.response['error']}"})
+        except Exception as e:
+            logger.error(f"Error scanning DB requests: {e}")
+            return json.dumps({"success": False, "error": str(e)})
+
+        # Parse every workflow request directed at the operator, newest first.
+        parsed_requests = []
+        for message in messages:
+            parsed = self._parse_db_credential_request_message(
+                message=message,
+                channel_id=resolved_channel_id,
+                current_user_id=operator_user_id,
+            )
+            if parsed:
+                parsed_requests.append(parsed)
+        parsed_requests.sort(key=lambda r: r.get("request_ts", ""), reverse=True)
+
+        # Dedup by (environment, service, recipient). Newest wins; older true
+        # duplicates are collapsed but counted.
+        deduped = []
+        seen_keys = {}
+        for request in parsed_requests:
+            recipient_id = (request.get("recipient") or {}).get("id")
+            key = (
+                request.get("environment"),
+                request.get("database", "").lower(),
+                recipient_id,
+            )
+            if key in seen_keys:
+                seen_keys[key]["duplicate_count"] += 1
+                continue
+            request["duplicate_count"] = 1
+            seen_keys[key] = request
+            deduped.append(request)
+
+        pending = []
+        stale_pending = []
+        already_processed_count = 0
+        for request in deduped:
+            status = self._find_db_credential_request_status(
+                channel_id=request["channel_id"],
+                request_ts=request["request_ts"],
+                environment=request["environment"],
+                recipient=request["recipient"],
+                operator=request["operator"],
+                database=request["database"],
+                limit=limit,
+            )
+            # Definitively handled (high confidence) -> drop. Medium confidence
+            # stays in the list flagged, so the operator can confirm.
+            if status.get("already_processed") and status.get("confidence") == "high":
+                already_processed_count += 1
+                continue
+
+            age = self._classify_db_request_age(request["request_ts"])
+            if age["tier"] == "expired":
+                # Outside the actionable lookback window; skip entirely.
+                continue
+
+            request["status"] = status
+            request["age"] = age
+            request["possibly_processed"] = bool(status.get("already_processed"))
+            if age["stale"]:
+                stale_pending.append(request)
+            else:
+                pending.append(request)
+
+        if not include_stale:
+            stale_pending = []
+
+        return json.dumps(
+            {
+                "success": True,
+                "channel_id": resolved_channel_id,
+                "fresh_hours": self._db_request_fresh_seconds() // 3600,
+                "lookback_days": self._db_request_lookback_seconds() // 86400,
+                "counts": {
+                    "pending": len(pending),
+                    "stale_pending": len(stale_pending),
+                    "already_processed": already_processed_count,
+                },
+                "pending_requests": pending,
+                "stale_requests": stale_pending,
+                "raw_slack_messages_returned": False,
+                "credential_values_returned": False,
+            },
+            indent=2,
+        )
+
     def _post_credentials_audit(
         self,
         env: str,
         data: dict,
         recipient_name: str,
         audit_timestamp: str,
+        service: Optional[str] = None,
     ) -> None:
         """Post an audit message to the credentials audit channel."""
         audit_channel = os.getenv("SLACK_AUDIT_CHANNEL_ID", "C08GHV4ELRX")
@@ -1960,6 +2201,13 @@ PY
 
         sender_name = self._get_slack_user_real_name(self.slack_user_id)
         cred_lines = "\n".join(f"> {k}: {v}" for k, v in data.items())
+
+        # Non-secret context line `*Env:* ... *Service:* ...`. The Service field
+        # lets the processed-status check disambiguate which database a recipient
+        # was sent, so multiple distinct-service requests can't be confused.
+        env_service_text = f"*Env:* `{env.lower()}`"
+        if service:
+            env_service_text += f"\n*Service:* `{service.lower()}`"
 
         blocks = [
             {
@@ -1975,7 +2223,7 @@ PY
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Env:* `{env.lower()}`",
+                    "text": env_service_text,
                 },
             },
             {
@@ -2174,11 +2422,14 @@ PY
             # Post audit message to credentials audit channel (db type only)
             if secret_type == "db":
                 recipient_name = matched_users[0].get("real_name") or slack_user
+                # database/creds/<service> -> <service>
+                service_name = path.rstrip("/").rsplit("/", 1)[-1] if path else None
                 self._post_credentials_audit(
                     env=env,
                     data=data,
                     recipient_name=recipient_name,
                     audit_timestamp=audit_timestamp,
+                    service=service_name,
                 )
 
             logger.info(
@@ -2904,6 +3155,42 @@ async def main():
                 },
             ),
             Tool(
+                name="vault_get_pending_db_credential_requests",
+                description=(
+                    "Return ALL unprocessed DB credential workflow requests directed at the configured "
+                    "Slack operator, not just the latest. Requests sharing the same (environment, service, "
+                    "recipient) are deduplicated to the newest one. Each request includes an age tier "
+                    "('fresh' vs 'stale') and processed status. Stale requests (older than the fresh window) "
+                    "are returned separately and should be confirmed individually before sending. Only "
+                    "structured fields are returned; raw Slack messages and credential values are never returned."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "channel_id": {
+                            "type": "string",
+                            "description": (
+                                "Optional Slack channel ID. Defaults to SLACK_DB_REQUEST_CHANNEL_ID, "
+                                "SLACK_AUDIT_CHANNEL_ID, or SLACK_DB_REQUEST_CHANNEL_NAME."
+                            ),
+                        },
+                        "include_stale": {
+                            "type": "boolean",
+                            "description": (
+                                "Whether to include stale (older than SLACK_DB_REQUEST_FRESH_HOURS) "
+                                "pending requests in a separate 'stale_requests' list."
+                            ),
+                            "default": True,
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum Slack messages per status check, capped at 200",
+                            "default": 100,
+                        },
+                    },
+                },
+            ),
+            Tool(
                 name="vault_get_db_credential_request_status",
                 description=(
                     "Return whether a specific DB credential request has already been processed by finding "
@@ -2935,6 +3222,15 @@ async def main():
                             "description": (
                                 "Optional Slack user ID of the operator expected to have processed the request. "
                                 "Defaults to SLACK_OPERATOR_USER_ID or SLACK_USER_ID."
+                            ),
+                        },
+                        "database": {
+                            "type": "string",
+                            "description": (
+                                "Optional database/service name from the request. When provided, the "
+                                "processed-status check requires the Vault notification to be for the same "
+                                "service, preventing a different service to the same recipient from being "
+                                "treated as a match."
                             ),
                         },
                         "limit": {
@@ -3025,6 +3321,12 @@ async def main():
                     ),
                     limit=arguments.get("limit", 100),
                 )
+            elif name == "vault_get_pending_db_credential_requests":
+                result = await vault_server.vault_get_pending_db_credential_requests(
+                    channel_id=arguments.get("channel_id"),
+                    include_stale=arguments.get("include_stale", True),
+                    limit=arguments.get("limit", 100),
+                )
             elif name == "vault_get_db_credential_request_status":
                 result = await vault_server.vault_get_db_credential_request_status(
                     channel_id=arguments.get("channel_id"),
@@ -3032,6 +3334,7 @@ async def main():
                     environment=arguments.get("environment"),
                     recipient_user_id=arguments.get("recipient_user_id"),
                     operator_user_id=arguments.get("operator_user_id"),
+                    database=arguments.get("database"),
                     limit=arguments.get("limit", 100),
                 )
             else:
