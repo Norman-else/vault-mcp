@@ -2186,6 +2186,116 @@ PY
             indent=2,
         )
 
+    async def vault_mark_db_credential_request(
+        self,
+        channel_id: str,
+        request_ts: str,
+        status: str,
+    ) -> str:
+        """Mark a validated Slack DB credential request as processing or completed."""
+        if not SLACK_AVAILABLE or not self.slack_client:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "Slack is not configured. Set SLACK_ENABLED=true and "
+                        "SLACK_BOT_TOKEN in environment variables."
+                    ),
+                }
+            )
+
+        reaction_by_status = {
+            "processing": "eyes",
+            "completed": "white_check_mark",
+        }
+        reaction = reaction_by_status.get((status or "").lower())
+        if not channel_id or not request_ts or not reaction:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "channel_id, request_ts, and status are required; "
+                        "status must be processing or completed."
+                    ),
+                }
+            )
+
+        configured_channel_id = self._resolve_db_request_channel_id()
+        if not configured_channel_id or channel_id != configured_channel_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "channel_id must match the configured DB request channel.",
+                }
+            )
+
+        operator_user_id = self._get_slack_operator_user_id()
+        if not operator_user_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": (
+                        "No Slack operator user configured. Set "
+                        "SLACK_OPERATOR_USER_ID or SLACK_USER_ID."
+                    ),
+                }
+            )
+
+        try:
+            response = self.slack_client.conversations_replies(
+                channel=channel_id,
+                ts=request_ts,
+                limit=1,
+            )
+            request_message = next(
+                (
+                    message
+                    for message in response.get("messages", []) or []
+                    if message.get("ts") == request_ts
+                ),
+                None,
+            )
+            if not request_message or not self._parse_db_credential_request_message(
+                message=request_message,
+                channel_id=channel_id,
+                current_user_id=operator_user_id,
+            ):
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "The target message is not a valid DB credential request.",
+                    }
+                )
+
+            self.slack_client.reactions_add(
+                channel=channel_id,
+                timestamp=request_ts,
+                name=reaction,
+            )
+        except SlackApiError as e:
+            error = e.response["error"]
+            if error != "already_reacted":
+                logger.error(f"Slack API error while marking DB request: {error}")
+                return json.dumps(
+                    {"success": False, "error": f"Slack API error: {error}"}
+                )
+        except Exception as e:
+            logger.error(f"Error marking DB request: {e}")
+            return json.dumps({"success": False, "error": str(e)})
+
+        return json.dumps(
+            {
+                "success": True,
+                "channel_id": channel_id,
+                "request_ts": request_ts,
+                "status": status.lower(),
+                "reaction": reaction,
+                "raw_slack_messages_returned": False,
+                "credential_values_returned": False,
+            },
+            indent=2,
+        )
+
     def _post_credentials_audit(
         self,
         env: str,
@@ -3248,6 +3358,35 @@ async def main():
                 },
             ),
             Tool(
+                name="vault_mark_db_credential_request",
+                description=(
+                    "Add a processing (eyes) or completed (white_check_mark) reaction to a validated "
+                    "database credential workflow request. The target must be in the configured DB request "
+                    "channel and must parse as a request directed at the configured operator."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "channel_id": {
+                            "type": "string",
+                            "description": "Slack channel ID returned by the DB request preflight tool",
+                        },
+                        "request_ts": {
+                            "type": "string",
+                            "description": "Slack timestamp returned by the DB request preflight tool",
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": ["processing", "completed"],
+                            "description": (
+                                "processing adds eyes; completed adds white_check_mark"
+                            ),
+                        },
+                    },
+                    "required": ["channel_id", "request_ts", "status"],
+                },
+            ),
+            Tool(
                 name="vault_kv_delete",
                 description="Permanently delete an entire secret path and all its versions from Vault KV store",
                 inputSchema={
@@ -3336,6 +3475,12 @@ async def main():
                     operator_user_id=arguments.get("operator_user_id"),
                     database=arguments.get("database"),
                     limit=arguments.get("limit", 100),
+                )
+            elif name == "vault_mark_db_credential_request":
+                result = await vault_server.vault_mark_db_credential_request(
+                    channel_id=arguments.get("channel_id"),
+                    request_ts=arguments.get("request_ts"),
+                    status=arguments.get("status"),
                 )
             else:
                 result = json.dumps({"error": f"Unknown tool: {name}"})

@@ -1,7 +1,7 @@
 import json
 import time
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from vault_mcp.server import VaultMCPServer
 
@@ -142,6 +142,81 @@ class PendingDbRequestTests(unittest.TestCase):
         self.assertEqual(result["counts"]["pending"], 0)
         self.assertEqual(result["counts"]["stale_pending"], 1)
         self.assertEqual(result["stale_requests"][0]["age"]["tier"], "stale")
+
+    def test_mark_request_adds_processing_and_completed_reactions(self):
+        server = self._server()
+        request_ts = f"{time.time():.6f}"
+        request = _request_message(
+            request_ts,
+            "UALICE",
+            "Alice",
+            "service-a",
+            "prod",
+        )
+        server.slack_client.conversations_replies.return_value = {
+            "messages": [request]
+        }
+
+        with patch("vault_mcp.server.SLACK_AVAILABLE", True):
+            processing = json.loads(
+                __import__("asyncio").run(
+                    server.vault_mark_db_credential_request(
+                        channel_id="C123",
+                        request_ts=request_ts,
+                        status="processing",
+                    )
+                )
+            )
+            completed = json.loads(
+                __import__("asyncio").run(
+                    server.vault_mark_db_credential_request(
+                        channel_id="C123",
+                        request_ts=request_ts,
+                        status="completed",
+                    )
+                )
+            )
+
+        self.assertTrue(processing["success"])
+        self.assertEqual(processing["reaction"], "eyes")
+        self.assertTrue(completed["success"])
+        self.assertEqual(completed["reaction"], "white_check_mark")
+        self.assertEqual(
+            server.slack_client.reactions_add.call_args_list,
+            [
+                call(
+                    channel="C123",
+                    timestamp=request_ts,
+                    name="eyes",
+                ),
+                call(
+                    channel="C123",
+                    timestamp=request_ts,
+                    name="white_check_mark",
+                ),
+            ],
+        )
+
+    def test_mark_request_rejects_non_request_message(self):
+        server = self._server()
+        request_ts = f"{time.time():.6f}"
+        server.slack_client.conversations_replies.return_value = {
+            "messages": [{"ts": request_ts, "text": "not a credential request"}]
+        }
+
+        with patch("vault_mcp.server.SLACK_AVAILABLE", True):
+            result = json.loads(
+                __import__("asyncio").run(
+                    server.vault_mark_db_credential_request(
+                        channel_id="C123",
+                        request_ts=request_ts,
+                        status="processing",
+                    )
+                )
+            )
+
+        self.assertFalse(result["success"])
+        server.slack_client.reactions_add.assert_not_called()
 
 
 if __name__ == "__main__":
