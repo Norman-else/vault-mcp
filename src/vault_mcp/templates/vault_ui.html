@@ -2273,6 +2273,29 @@
         .btn-toggle-visibility:hover {
             color: var(--text-primary);
         }
+
+        .creds-field-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-copy-credential {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .btn-copy-credential:hover {
+            color: var(--primary);
+        }
         
         .creds-card-footer {
             padding: 20px 24px;
@@ -5847,13 +5870,22 @@
                         <div class="creds-field">
                             <div class="creds-field-label">
                                 <span>Username</span>
-                                <button class="btn-toggle-visibility" onclick="toggleCredsVisibility('username')">
-                                    <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                        <circle cx="12" cy="12" r="3"></circle>
-                                    </svg>
-                                    <span id="username-toggle-text">Show</span>
-                                </button>
+                                <div class="creds-field-actions">
+                                    <button type="button" class="btn-copy-credential" title="Copy username" aria-label="Copy username" onclick="copyCredentialField('username')">
+                                        <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                        </svg>
+                                        <span>Copy</span>
+                                    </button>
+                                    <button type="button" class="btn-toggle-visibility" onclick="toggleCredsVisibility('username')">
+                                        <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                            <circle cx="12" cy="12" r="3"></circle>
+                                        </svg>
+                                        <span id="username-toggle-text">Show</span>
+                                    </button>
+                                </div>
                             </div>
                             <div class="creds-field-value creds-field-value-masked" id="username-value" data-value="${escapeHtml(creds.username)}">
                                 •••••••••••••••••••••••
@@ -5863,13 +5895,22 @@
                         <div class="creds-field">
                             <div class="creds-field-label">
                                 <span>Password</span>
-                                <button class="btn-toggle-visibility" onclick="toggleCredsVisibility('password')">
-                                    <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                        <circle cx="12" cy="12" r="3"></circle>
-                                    </svg>
-                                    <span id="password-toggle-text">Show</span>
-                                </button>
+                                <div class="creds-field-actions">
+                                    <button type="button" class="btn-copy-credential" title="Copy password" aria-label="Copy password" onclick="copyCredentialField('password')">
+                                        <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                        </svg>
+                                        <span>Copy</span>
+                                    </button>
+                                    <button type="button" class="btn-toggle-visibility" onclick="toggleCredsVisibility('password')">
+                                        <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                            <circle cx="12" cy="12" r="3"></circle>
+                                        </svg>
+                                        <span id="password-toggle-text">Show</span>
+                                    </button>
+                                </div>
                             </div>
                             <div class="creds-field-value creds-field-value-masked" id="password-value" data-value="${escapeHtml(creds.password)}">
                                 •••••••••••••••••••••••
@@ -5928,6 +5969,18 @@
                 showToast('Credentials copied to clipboard');
             }).catch(() => {
                 showToast('Failed to copy credentials', 'error');
+            });
+        }
+
+        function copyCredentialField(field) {
+            const valueEl = document.getElementById(`${field}-value`);
+            const value = valueEl.getAttribute('data-value');
+            const label = field === 'username' ? 'Username' : 'Password';
+
+            navigator.clipboard.writeText(value).then(() => {
+                showToast(`${label} copied to clipboard`);
+            }).catch(() => {
+                showToast(`Failed to copy ${label.toLowerCase()}`, 'error');
             });
         }
 
