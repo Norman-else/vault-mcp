@@ -122,12 +122,80 @@ class PendingDbRequestTests(unittest.TestCase):
         self.assertNotIn("service-a", pending_services)
         self.assertEqual(result["counts"]["already_processed"], 1)
 
+    def test_trusted_sender_marks_matching_request_processed(self):
+        server = self._server()
+        now = time.time()
+        msgs = [
+            _audit_message(
+                f"{now-5:.6f}",
+                "Alice",
+                "prod",
+                service="service-a",
+                sender_name="Noodles Wang",
+            ),
+            _request_message(
+                f"{now-10:.6f}",
+                "UALICE",
+                "Alice",
+                "service-a",
+                "prod",
+            ),
+        ]
+        server.slack_client.conversations_history.side_effect = self._history(msgs)
+        server.slack_client.conversations_replies.return_value = {"messages": []}
+
+        with patch("vault_mcp.server.SLACK_AVAILABLE", True):
+            result = json.loads(
+                __import__("asyncio").run(
+                    server.vault_get_pending_db_credential_requests()
+                )
+            )
+
+        self.assertEqual(result["counts"]["pending"], 0)
+        self.assertEqual(result["counts"]["already_processed"], 1)
+
+    def test_untrusted_sender_stays_pending_for_confirmation(self):
+        server = self._server()
+        now = time.time()
+        msgs = [
+            _audit_message(
+                f"{now-5:.6f}",
+                "Alice",
+                "prod",
+                service="service-a",
+                sender_name="Someone Else",
+            ),
+            _request_message(
+                f"{now-10:.6f}",
+                "UALICE",
+                "Alice",
+                "service-a",
+                "prod",
+            ),
+        ]
+        server.slack_client.conversations_history.side_effect = self._history(msgs)
+        server.slack_client.conversations_replies.return_value = {"messages": []}
+
+        with patch("vault_mcp.server.SLACK_AVAILABLE", True):
+            result = json.loads(
+                __import__("asyncio").run(
+                    server.vault_get_pending_db_credential_requests()
+                )
+            )
+
+        self.assertEqual(result["counts"]["pending"], 1)
+        self.assertTrue(result["pending_requests"][0]["possibly_processed"])
+        self.assertEqual(
+            result["pending_requests"][0]["status"]["confidence"],
+            "medium",
+        )
+
     def test_stale_request_separated(self):
         server = self._server()
         now = time.time()
         msgs = [
-            # 3 days old -> stale (fresh window default 24h, lookback 7d)
-            _request_message(f"{now-3*86400:.6f}", "UBOB", "Bob", "service-c", "dev"),
+            # 36 hours old -> stale (fresh window default 24h, lookback 2d)
+            _request_message(f"{now-36*3600:.6f}", "UBOB", "Bob", "service-c", "dev"),
         ]
         server.slack_client.conversations_history.side_effect = self._history(msgs)
         server.slack_client.conversations_replies.return_value = {"messages": []}
@@ -142,6 +210,31 @@ class PendingDbRequestTests(unittest.TestCase):
         self.assertEqual(result["counts"]["pending"], 0)
         self.assertEqual(result["counts"]["stale_pending"], 1)
         self.assertEqual(result["stale_requests"][0]["age"]["tier"], "stale")
+
+    def test_request_older_than_two_days_is_expired(self):
+        server = self._server()
+        now = time.time()
+        msgs = [
+            _request_message(
+                f"{now-3*86400:.6f}",
+                "UBOB",
+                "Bob",
+                "service-c",
+                "dev",
+            ),
+        ]
+        server.slack_client.conversations_history.side_effect = self._history(msgs)
+        server.slack_client.conversations_replies.return_value = {"messages": []}
+
+        with patch("vault_mcp.server.SLACK_AVAILABLE", True):
+            result = json.loads(
+                __import__("asyncio").run(
+                    server.vault_get_pending_db_credential_requests()
+                )
+            )
+
+        self.assertEqual(result["counts"]["pending"], 0)
+        self.assertEqual(result["counts"]["stale_pending"], 0)
 
     def test_mark_request_adds_processing_and_completed_reactions(self):
         server = self._server()
@@ -195,6 +288,11 @@ class PendingDbRequestTests(unittest.TestCase):
                     name="white_check_mark",
                 ),
             ],
+        )
+        server.slack_client.reactions_remove.assert_called_once_with(
+            channel="C123",
+            timestamp=request_ts,
+            name="eyes",
         )
 
     def test_mark_request_rejects_non_request_message(self):

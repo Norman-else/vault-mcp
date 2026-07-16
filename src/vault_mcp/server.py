@@ -1565,9 +1565,9 @@ PY
     def _db_request_lookback_seconds(self) -> int:
         """How far back (seconds) to scan for pending requests, also the stale upper bound."""
         try:
-            days = float(os.getenv("SLACK_DB_REQUEST_LOOKBACK_DAYS", "7"))
+            days = float(os.getenv("SLACK_DB_REQUEST_LOOKBACK_DAYS", "2"))
         except (TypeError, ValueError):
-            days = 7.0
+            days = 2.0
         return int(max(days, 0) * 86400)
 
     def _classify_db_request_age(self, request_ts: str) -> dict:
@@ -1720,6 +1720,28 @@ PY
         candidates.discard("")
         return observed in candidates
 
+    def _is_trusted_db_request_sender(
+        self,
+        operator: dict,
+        observed_name: Optional[str],
+    ) -> bool:
+        """Return whether an audit sender can definitively complete DB requests."""
+        if self._name_matches(operator, observed_name):
+            return True
+        if not observed_name:
+            return False
+
+        configured_names = os.getenv(
+            "SLACK_DB_REQUEST_TRUSTED_SENDER_NAMES",
+            "Noodles Wang",
+        )
+        trusted_names = {
+            name.strip().lower()
+            for name in configured_names.split(",")
+            if name.strip()
+        }
+        return observed_name.strip().lower() in trusted_names
+
     def _find_db_credential_request_status(
         self,
         channel_id: str,
@@ -1810,7 +1832,10 @@ PY
 
             sender_matches = True
             if operator:
-                sender_matches = self._name_matches(operator, audit["sender_name"])
+                sender_matches = self._is_trusted_db_request_sender(
+                    operator,
+                    audit["sender_name"],
+                )
 
             if not sender_matches:
                 return {
@@ -2266,6 +2291,17 @@ PY
                         "error": "The target message is not a valid DB credential request.",
                     }
                 )
+
+            if status.lower() == "completed":
+                try:
+                    self.slack_client.reactions_remove(
+                        channel=channel_id,
+                        timestamp=request_ts,
+                        name="eyes",
+                    )
+                except SlackApiError as e:
+                    if e.response["error"] != "no_reaction":
+                        raise
 
             self.slack_client.reactions_add(
                 channel=channel_id,
