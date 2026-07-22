@@ -454,6 +454,15 @@ WEB_UI_HOST=0.0.0.0
    }
    ```
 
+   如果公司代理或 VPN 替换了 HTTPS 证书链，可以把公司根证书 bundle 配给 Slack 客户端：
+   ```json
+   {
+     "env": {
+       "SLACK_CA_BUNDLE": "/path/to/company-ca-bundle.pem"
+     }
+   }
+   ```
+
 ### 消息格式
 
 **KV Secrets**：

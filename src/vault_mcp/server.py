@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import shutil
+import ssl
 import time
 from html import unescape
 from typing import Any, Optional
@@ -16,6 +17,10 @@ from datetime import datetime
 
 import hvac
 import boto3
+try:
+    import certifi
+except ImportError:
+    certifi = None
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 from mcp.server.stdio import stdio_server
@@ -98,6 +103,7 @@ class VaultMCPServer:
         "REQUESTS_CA_BUNDLE",
         "SSL_CERT_FILE",
         "SSL_CERT_DIR",
+        "SLACK_CA_BUNDLE",
         "CURL_CA_BUNDLE",
         "VAULT_CACERT",
         "VAULT_CAPATH",
@@ -129,7 +135,10 @@ class VaultMCPServer:
 
         if self.slack_enabled and SLACK_AVAILABLE and self.slack_bot_token:
             try:
-                self.slack_client = WebClient(token=self.slack_bot_token)
+                self.slack_client = WebClient(
+                    token=self.slack_bot_token,
+                    ssl=self._create_slack_ssl_context(),
+                )
                 logger.info("✓ Slack notifications enabled")
             except Exception as e:
                 logger.warning(f"Failed to initialize Slack client: {e}")
@@ -626,6 +635,30 @@ PY
             proxies.setdefault("https", all_proxy)
 
         return proxies or None
+
+    def _create_slack_ssl_context(self) -> ssl.SSLContext:
+        """Create an SSL context for Slack API calls with reliable CA roots."""
+        ca_file = (
+            os.environ.get("SLACK_CA_BUNDLE")
+            or os.environ.get("REQUESTS_CA_BUNDLE")
+            or os.environ.get("SSL_CERT_FILE")
+            or os.environ.get("CURL_CA_BUNDLE")
+        )
+        ca_path = os.environ.get("SSL_CERT_DIR")
+
+        if ca_file or ca_path:
+            logger.info("Using configured CA bundle for Slack SSL verification")
+            return ssl.create_default_context(
+                cafile=ca_file or None,
+                capath=ca_path or None,
+            )
+
+        if certifi is not None:
+            logger.info("Using certifi CA bundle for Slack SSL verification")
+            return ssl.create_default_context(cafile=certifi.where())
+
+        logger.info("Using Python default CA paths for Slack SSL verification")
+        return ssl.create_default_context()
 
     def _preferred_vault_transport(self) -> str:
         """Return the preferred transport for authenticated Vault operations."""
