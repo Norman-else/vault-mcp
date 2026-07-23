@@ -2372,8 +2372,16 @@ PY
         recipient_name: str,
         audit_timestamp: str,
         service: Optional[str] = None,
+        header_text: str = "🚀 New Database Credentials Sent",
+        secret_path: Optional[str] = None,
     ) -> None:
-        """Post an audit message to the credentials audit channel."""
+        """Post an audit message to the credentials audit channel.
+
+        Defaults produce the db-credentials audit format. kv shares pass a
+        distinct header_text and secret_path — the header (and fallback text)
+        must NOT contain "New Database Credentials Sent" or "New credentials
+        sent", which the DB request processed-status matcher keys on.
+        """
         audit_channel = os.getenv("SLACK_AUDIT_CHANNEL_ID", "C08GHV4ELRX")
         if not self.slack_client or not audit_channel:
             return
@@ -2387,13 +2395,15 @@ PY
         env_service_text = f"*Env:* `{env.lower()}`"
         if service:
             env_service_text += f"\n*Service:* `{service.lower()}`"
+        if secret_path:
+            env_service_text += f"\n*Path:* `{secret_path}`"
 
         blocks = [
             {
                 "type": "header",
                 "text": {
                     "type": "plain_text",
-                    "text": "🚀 New Database Credentials Sent",
+                    "text": header_text,
                     "emoji": True,
                 },
             },
@@ -2431,7 +2441,11 @@ PY
             self.slack_client.chat_postMessage(
                 channel=audit_channel,
                 blocks=blocks,
-                text=f"New credentials sent to {recipient_name} by {sender_name}",
+                text=(
+                    f"Vault secret {secret_path} sent to {recipient_name} by {sender_name}"
+                    if secret_path
+                    else f"New credentials sent to {recipient_name} by {sender_name}"
+                ),
             )
             logger.info(f"✓ Audit message posted to channel {audit_channel}")
         except Exception as e:
@@ -2443,6 +2457,7 @@ PY
         slack_user: str,
         mount_point: str = "secret",
         secret_type: str = "kv",
+        keys: Optional[list] = None,
     ) -> str:
         """Fetch a Vault secret and send it directly to a Slack user as a DM.
 
@@ -2455,6 +2470,9 @@ PY
             slack_user: Slack user display name, real name, or username
             mount_point: KV mount point (default: secret), only used when secret_type is 'kv'
             secret_type: 'kv' for KV secrets engine (default), 'db' for dynamic database credentials
+            keys: Optional list of key names — only these keys of the KV secret
+                  are sent. Keys missing from the secret are reported back as
+                  missing_keys (names only). Only supported for 'kv' type.
         """
         if not self._ensure_authenticated():
             return json.dumps(
@@ -2471,6 +2489,28 @@ PY
                     ),
                 }
             )
+
+        if keys is not None:
+            if secret_type != "kv":
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": (
+                            "The 'keys' parameter is only supported for kv secrets. "
+                            "Dynamic database credentials are always sent in full."
+                        ),
+                    }
+                )
+            if not keys:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": (
+                            "'keys' must be a non-empty list of key names, "
+                            "or omitted to share the whole secret."
+                        ),
+                    }
+                )
 
         # Step 1: Resolve Slack user ID
         matched_users = self._find_slack_users(slack_user)
@@ -2533,6 +2573,30 @@ PY
                 }
             )
 
+        # Step 2.5: Optionally narrow the payload to the requested keys (kv only).
+        # Missing keys are reported by NAME only — values never reach the AI.
+        shared_keys: Optional[list] = None
+        missing_keys: list = []
+        if keys is not None:
+            missing_keys = [k for k in keys if k not in data]
+            present_keys = [k for k in keys if k in data]
+            if not present_keys:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": (
+                            "None of the requested keys exist in the secret. "
+                            "Nothing was sent."
+                        ),
+                        "requested_keys": keys,
+                        "available_keys": list(data.keys()),
+                        "path": display_path,
+                    },
+                    indent=2,
+                )
+            data = {k: data[k] for k in present_keys}
+            shared_keys = present_keys
+
         # Step 3: Send secret directly to the target Slack user
         try:
             now = datetime.now()
@@ -2576,6 +2640,23 @@ PY
                 },
             ]
 
+            if shared_keys is not None:
+                # Let the recipient know this is a subset of the secret.
+                blocks.insert(
+                    2,
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"*Keys:* `{'`, `'.join(shared_keys)}` "
+                                "_(partial share — other keys of this secret "
+                                "were not included)_"
+                            ),
+                        },
+                    },
+                )
+
             try:
                 self.slack_client.chat_postMessage(
                     channel=target_user_id,
@@ -2584,12 +2665,18 @@ PY
                 )
             except SlackApiError as e:
                 if "invalid_blocks" in str(e) or "invalid_text" in str(e):
+                    partial_note = (
+                        f"Keys: {', '.join(shared_keys)} (partial share)\n"
+                        if shared_keys is not None
+                        else ""
+                    )
                     # Fallback to plain text
                     self.slack_client.chat_postMessage(
                         channel=target_user_id,
                         text=(
                             f"🔐 Vault Secret: {display_path}\n"
-                            f"Environment: {env} | Time: {timestamp}\n\n"
+                            f"Environment: {env} | Time: {timestamp}\n"
+                            f"{partial_note}\n"
                             f"```\n{formatted_data}\n```\n\n"
                             "⚠️ This message contains sensitive information. "
                             "Please handle it securely."
@@ -2598,9 +2685,9 @@ PY
                 else:
                     raise
 
-            # Post audit message to credentials audit channel (db type only)
+            # Post audit message to credentials audit channel
+            recipient_name = matched_users[0].get("real_name") or slack_user
             if secret_type == "db":
-                recipient_name = matched_users[0].get("real_name") or slack_user
                 # database/creds/<service> -> <service>
                 service_name = path.rstrip("/").rsplit("/", 1)[-1] if path else None
                 self._post_credentials_audit(
@@ -2610,23 +2697,40 @@ PY
                     audit_timestamp=audit_timestamp,
                     service=service_name,
                 )
+            else:
+                # kv share audit. The header must differ from the db one so the
+                # DB request processed-status matcher never picks up kv audits.
+                self._post_credentials_audit(
+                    env=env,
+                    data=data,
+                    recipient_name=recipient_name,
+                    audit_timestamp=audit_timestamp,
+                    header_text="🔐 Vault Secret Sent",
+                    secret_path=display_path,
+                )
 
             logger.info(
                 f"✓ Vault secret '{display_path}' sent to Slack user "
                 f"'{slack_user}' ({target_user_id})"
             )
-            return json.dumps(
-                {
-                    "success": True,
-                    "message": (
-                        f"Secret '{display_path}' was sent successfully to "
-                        f"Slack user '{slack_user}'."
-                    ),
-                    "slack_user_id": target_user_id,
-                    "data_returned_to_ai": False,
-                },
-                indent=2,
-            )
+            result = {
+                "success": True,
+                "message": (
+                    f"Secret '{display_path}' was sent successfully to "
+                    f"Slack user '{slack_user}'."
+                ),
+                "slack_user_id": target_user_id,
+                "data_returned_to_ai": False,
+            }
+            if shared_keys is not None:
+                result["shared_keys"] = shared_keys
+                if missing_keys:
+                    result["missing_keys"] = missing_keys
+                    result["warning"] = (
+                        "Some requested keys were not found in the secret "
+                        f"and were not sent: {', '.join(missing_keys)}"
+                    )
+            return json.dumps(result, indent=2)
 
         except SlackApiError as e:
             return json.dumps(
@@ -3298,6 +3402,16 @@ async def main():
                             "enum": ["kv", "db"],
                             "default": "kv",
                         },
+                        "keys": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Optional list of key names — only these keys of the KV secret are sent "
+                                "to the Slack user. Keys missing from the secret are skipped and reported "
+                                "back as missing_keys (names only, never values). "
+                                "Only supported when secret_type is 'kv'. Omit to share the whole secret."
+                            ),
+                        },
                     },
                     "required": ["path", "slack_user"],
                 },
@@ -3520,6 +3634,7 @@ async def main():
                     slack_user=arguments.get("slack_user"),
                     mount_point=arguments.get("mount_point", "secret"),
                     secret_type=arguments.get("secret_type", "kv"),
+                    keys=arguments.get("keys"),
                 )
             elif name == "vault_get_latest_db_credential_request":
                 result = await vault_server.vault_get_latest_db_credential_request(
