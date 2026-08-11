@@ -2973,6 +2973,7 @@
                 </svg>
             </button>
             <h2 class="modal-title">Create New Secret Version</h2>
+            <div class="k8s-target-box" id="jsonEditorSecretPath" style="margin-bottom: 16px;"></div>
             <div class="form-group">
                 <label class="label">NEW VERSION JSON</label>
                 <div class="json-editor-surface">
@@ -5120,6 +5121,7 @@
             }
 
             const initialValue = JSON.stringify(currentSecretData, null, 2);
+            document.getElementById('jsonEditorSecretPath').textContent = currentSecret;
             const input = document.getElementById('jsonEditorInput');
             const editor = ensureJsonEditor();
 
