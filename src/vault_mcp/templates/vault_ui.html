@@ -1942,6 +1942,152 @@
             font-weight: 600;
         }
         
+        /* K8s Deployment Restart Modal */
+        .k8s-deploy-list {
+            max-height: 320px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            margin-top: 12px;
+        }
+
+        .k8s-deploy-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 14px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+
+        .k8s-deploy-item:last-child {
+            border-bottom: none;
+        }
+
+        .k8s-deploy-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .k8s-deploy-item.selected {
+            background: var(--bg-hover);
+            border-left: 3px solid var(--primary);
+        }
+
+        .k8s-deploy-name {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .k8s-deploy-ns {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .k8s-deploy-replicas {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .k8s-target-box {
+            background: var(--bg-hover);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--primary);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .k8s-progress-bar {
+            height: 8px;
+            background: var(--bg-hover);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 16px 0 12px;
+        }
+
+        .k8s-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--success);
+            border-radius: 4px;
+            transition: width 0.4s ease;
+        }
+
+        .k8s-progress-stats {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .k8s-progress-status {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .k8s-pod-list {
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 12px;
+        }
+
+        .k8s-pod-list:empty {
+            display: none;
+        }
+
+        .k8s-pod-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+        }
+
+        .k8s-pod-row:last-child {
+            border-bottom: none;
+        }
+
+        .k8s-pod-dot {
+            flex-shrink: 0;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .k8s-pod-name {
+            flex: 1;
+            font-family: var(--font-mono);
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .k8s-pod-phase {
+            font-family: var(--font-mono);
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
         /* Mode Selector in Sidebar */
         .mode-selector {
             display: flex;
@@ -2634,6 +2780,12 @@
                 </div>
                 
                 <div style="display: flex; align-items: center; gap: 16px;">
+                    <button class="btn-icon" id="k8sRestartBtn" onclick="openK8sRestartModal()" title="Restart Kubernetes Deployment (⌘⇧K / Ctrl+Shift+K)">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
                     <button class="btn-icon" onclick="openSearchModal()" title="Search (⌘K / Ctrl+K)">
                         <svg class="icon" viewBox="0 0 24 24">
                             <circle cx="11" cy="11" r="8"></circle>
@@ -3052,6 +3204,63 @@
         </div>
     </div>
 
+    <!-- K8s Deployment Restart Modal -->
+    <div class="modal-overlay" id="k8sRestartModal" onclick="if (event.target === event.currentTarget) closeK8sRestartModal()">
+        <div class="modal-content" style="max-width: 560px;">
+            <button class="modal-close-btn" onclick="closeK8sRestartModal()">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <h2 class="modal-title">Restart Deployment</h2>
+
+            <!-- Phase 1: search & select -->
+            <div id="k8sPhaseSearch">
+                <input type="text" class="input" id="k8sDeploySearchInput"
+                       placeholder="Search deployments in current cluster..."
+                       oninput="renderK8sDeployList()" onkeydown="k8sSearchKeydown(event)"
+                       autocomplete="off">
+                <div class="k8s-deploy-list" id="k8sDeployList">
+                    <div style="padding: 20px; display: flex; justify-content: center;">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 2: confirm -->
+            <div id="k8sPhaseConfirm" style="display: none;">
+                <p style="color: var(--text-secondary); margin-bottom: 12px;">This will perform a rolling restart of:</p>
+                <div class="k8s-target-box" id="k8sConfirmTarget"></div>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;" id="k8sConfirmEnvWarning"></p>
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="k8sShowPhase('search')">Back</button>
+                    <button class="btn-primary" id="k8sConfirmBtn" onclick="k8sConfirmRestart()">Restart</button>
+                </div>
+            </div>
+
+            <!-- Phase 3: progress -->
+            <div id="k8sPhaseProgress" style="display: none;">
+                <div class="k8s-target-box" id="k8sProgressTarget"></div>
+                <div class="k8s-progress-bar">
+                    <div class="k8s-progress-fill" id="k8sProgressFill"></div>
+                </div>
+                <div class="k8s-progress-stats">
+                    <span>Updated: <b id="k8sStatUpdated">-</b></span>
+                    <span>Ready: <b id="k8sStatReady">-</b></span>
+                    <span>Available: <b id="k8sStatAvailable">-</b></span>
+                    <span>Total: <b id="k8sStatTotal">-</b></span>
+                    <span>Elapsed: <b id="k8sStatElapsed">0s</b></span>
+                </div>
+                <div class="k8s-pod-list" id="k8sPodList"></div>
+                <div class="k8s-progress-status" id="k8sProgressStatus"></div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeK8sRestartModal()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Delete Key Confirmation Modal -->
     <div class="modal-overlay" id="deleteKeyModal">
         <div class="modal-content">
@@ -3115,6 +3324,9 @@
             // Update sidebar button active states
             document.getElementById('kvModeBtn').classList.toggle('active', mode === 'kv');
             document.getElementById('dbModeBtn').classList.toggle('active', mode === 'db');
+
+            // Restart-deployment button only in KV mode
+            document.getElementById('k8sRestartBtn').style.display = (mode === 'kv') ? '' : 'none';
             
             if (mode === 'kv') {
                 // Clear current selection when switching to KV mode
@@ -5296,6 +5508,191 @@
                 .replace(/'/g, "&#039;");
         }
         
+        // --- K8s Deployment Restart ---
+
+        let k8sDeployments = [];
+        let k8sFilteredDeploys = [];
+        let k8sSelectedIndex = -1;
+        let k8sSelectedDeploy = null;
+        let k8sPollTimer = null;
+        let k8sPollStart = 0;
+
+        function k8sShowPhase(phase) {
+            document.getElementById('k8sPhaseSearch').style.display = phase === 'search' ? '' : 'none';
+            document.getElementById('k8sPhaseConfirm').style.display = phase === 'confirm' ? '' : 'none';
+            document.getElementById('k8sPhaseProgress').style.display = phase === 'progress' ? '' : 'none';
+        }
+
+        function openK8sRestartModal() {
+            k8sSelectedDeploy = null;
+            if (k8sPollTimer) { clearInterval(k8sPollTimer); k8sPollTimer = null; }
+            document.getElementById('k8sDeploySearchInput').value = '';
+            k8sShowPhase('search');
+            document.getElementById('k8sRestartModal').classList.add('active');
+            loadK8sDeployments();
+            setTimeout(() => document.getElementById('k8sDeploySearchInput').focus(), 100);
+        }
+
+        function closeK8sRestartModal() {
+            document.getElementById('k8sRestartModal').classList.remove('active');
+            if (k8sPollTimer) { clearInterval(k8sPollTimer); k8sPollTimer = null; }
+        }
+
+        async function loadK8sDeployments() {
+            const list = document.getElementById('k8sDeployList');
+            list.innerHTML = '<div style="padding: 20px; display: flex; justify-content: center;"><div class="spinner"></div></div>';
+            try {
+                const resp = await fetch('/api/k8s/deployments');
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Failed to load deployments');
+                k8sDeployments = data.deployments;
+                renderK8sDeployList();
+            } catch (e) {
+                k8sDeployments = [];
+                list.innerHTML = `<div style="padding: 20px; color: var(--danger); font-size: 13px;">${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        function renderK8sDeployList(keepIndex = false) {
+            const list = document.getElementById('k8sDeployList');
+            const q = document.getElementById('k8sDeploySearchInput').value.trim().toLowerCase();
+            k8sFilteredDeploys = k8sDeployments.filter(d =>
+                !q || d.name.toLowerCase().includes(q) || d.namespace.toLowerCase().includes(q));
+            if (!keepIndex) k8sSelectedIndex = k8sFilteredDeploys.length ? 0 : -1;
+            if (!k8sFilteredDeploys.length) {
+                list.innerHTML = '<div style="padding: 20px; color: var(--text-muted); font-size: 13px; text-align: center;">No deployments found</div>';
+                return;
+            }
+            list.innerHTML = k8sFilteredDeploys.map((d, i) => `
+                <div class="k8s-deploy-item ${i === k8sSelectedIndex ? 'selected' : ''}" onclick="k8sSelectDeploy('${escapeHtml(d.namespace)}', '${escapeHtml(d.name)}')">
+                    <div>
+                        <div class="k8s-deploy-name">${escapeHtml(d.name)}</div>
+                        <div class="k8s-deploy-ns">${escapeHtml(d.namespace)}</div>
+                    </div>
+                    <div class="k8s-deploy-replicas">${d.ready}/${d.total}</div>
+                </div>
+            `).join('');
+        }
+
+        function k8sSearchKeydown(e) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!k8sFilteredDeploys.length) return;
+                const n = k8sFilteredDeploys.length;
+                k8sSelectedIndex = e.key === 'ArrowDown'
+                    ? (k8sSelectedIndex + 1) % n
+                    : (k8sSelectedIndex <= 0 ? n - 1 : k8sSelectedIndex - 1);
+                renderK8sDeployList(true);
+                const sel = document.querySelector('.k8s-deploy-item.selected');
+                if (sel) sel.scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const d = k8sFilteredDeploys[k8sSelectedIndex];
+                if (d) k8sSelectDeploy(d.namespace, d.name);
+            } else if (e.key === 'Escape') {
+                closeK8sRestartModal();
+            }
+        }
+
+        function k8sSelectDeploy(namespace, name) {
+            k8sSelectedDeploy = { namespace, name };
+            document.getElementById('k8sConfirmTarget').textContent = `${namespace}/${name}`;
+            const isProd = currentEnv === 'prod';
+            document.getElementById('k8sConfirmEnvWarning').innerHTML =
+                `Cluster environment: <b style="color: ${isProd ? 'var(--danger)' : 'var(--success)'};">${escapeHtml((currentEnv || 'unknown').toUpperCase())}</b>`
+                + (isProd ? ' — ⚠️ this is PRODUCTION' : '');
+            document.getElementById('k8sConfirmBtn').style.background = isProd ? 'var(--danger)' : '';
+            k8sShowPhase('confirm');
+        }
+
+        async function k8sConfirmRestart() {
+            const { namespace, name } = k8sSelectedDeploy;
+            const btn = document.getElementById('k8sConfirmBtn');
+            btn.disabled = true;
+            try {
+                const resp = await fetch('/api/k8s/deployments/restart', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ namespace, name })
+                });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Restart failed');
+            } catch (e) {
+                btn.disabled = false;
+                showToast(e.message, 'error');
+                return;
+            }
+            btn.disabled = false;
+            document.getElementById('k8sProgressTarget').textContent = `${namespace}/${name}`;
+            document.getElementById('k8sProgressStatus').innerHTML =
+                '<div class="spinner" style="width: 14px; height: 14px;"></div> Restarting...';
+            document.getElementById('k8sPodList').innerHTML = '';
+            document.getElementById('k8sStatElapsed').textContent = '0s';
+            const fill = document.getElementById('k8sProgressFill');
+            fill.style.width = '0%';
+            fill.style.background = 'var(--success)';
+            k8sShowPhase('progress');
+            k8sPollStart = Date.now();
+            k8sPollStatus();
+            k8sPollTimer = setInterval(k8sPollStatus, 1500);
+        }
+
+        function k8sRenderPods(pods) {
+            const el = document.getElementById('k8sPodList');
+            if (!pods || !pods.length) { el.innerHTML = ''; return; }
+            el.innerHTML = pods.map(p => {
+                const [r, t] = p.ready.split('/');
+                const color = /BackOff|Error|Failed|ImagePull/i.test(p.phase) ? 'var(--danger)'
+                    : (p.phase === 'Running' && r === t ? 'var(--success)' : 'var(--warning)');
+                return `<div class="k8s-pod-row">
+                    <span class="k8s-pod-dot" style="background: ${color};"></span>
+                    <span class="k8s-pod-name">${escapeHtml(p.name)}</span>
+                    <span class="k8s-pod-phase">${escapeHtml(p.phase)} · ${escapeHtml(p.ready)}</span>
+                </div>`;
+            }).join('');
+        }
+
+        async function k8sPollStatus() {
+            const { namespace, name } = k8sSelectedDeploy;
+            const statusEl = document.getElementById('k8sProgressStatus');
+            const fill = document.getElementById('k8sProgressFill');
+            try {
+                const resp = await fetch(`/api/k8s/deployments/status?namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`);
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Status check failed');
+                const s = data.status;
+                document.getElementById('k8sStatUpdated').textContent = s.updated;
+                document.getElementById('k8sStatReady').textContent = s.ready;
+                document.getElementById('k8sStatAvailable').textContent = s.available;
+                document.getElementById('k8sStatTotal').textContent = s.total;
+                document.getElementById('k8sStatElapsed').textContent =
+                    Math.round((Date.now() - k8sPollStart) / 1000) + 's';
+                k8sRenderPods(s.pods);
+                const pct = s.complete ? 100
+                    : (s.total ? Math.min(99, Math.round((s.updated + s.available) / (2 * s.total) * 100)) : 0);
+                fill.style.width = pct + '%';
+                if (s.complete) {
+                    clearInterval(k8sPollTimer); k8sPollTimer = null;
+                    statusEl.innerHTML = '<span style="color: var(--success);">✓ Restart complete — all replicas ready</span>';
+                } else if (s.failed) {
+                    clearInterval(k8sPollTimer); k8sPollTimer = null;
+                    fill.style.background = 'var(--danger)';
+                    statusEl.innerHTML = `<span style="color: var(--danger);">✗ Rollout failed: ${escapeHtml(s.message || 'progress deadline exceeded')}</span>`;
+                } else {
+                    statusEl.innerHTML = '<div class="spinner" style="width: 14px; height: 14px;"></div> Rolling out new pods...';
+                }
+            } catch (e) {
+                clearInterval(k8sPollTimer); k8sPollTimer = null;
+                fill.style.background = 'var(--danger)';
+                statusEl.innerHTML = `<span style="color: var(--danger);">✗ ${escapeHtml(e.message)}</span>`;
+                return;
+            }
+            if (k8sPollTimer && Date.now() - k8sPollStart > 5 * 60 * 1000) {
+                clearInterval(k8sPollTimer); k8sPollTimer = null;
+                statusEl.innerHTML = '<span style="color: var(--warning);">Timed out after 5 minutes — check the cluster directly</span>';
+            }
+        }
+
         // --- Search Modal Functions ---
         
         let searchDebounceTimer = null;
@@ -5647,7 +6044,13 @@
         
         // Global keyboard shortcut (Cmd+K / Ctrl+K)
         document.addEventListener('keydown', function(e) {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'k') {
+                // Cmd/Ctrl+Shift+K: restart deployment (KV mode only)
+                if (currentMode === 'kv') {
+                    e.preventDefault();
+                    openK8sRestartModal();
+                }
+            } else if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
                 openSearchModal();
             }

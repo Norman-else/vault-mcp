@@ -1,11 +1,13 @@
 """Vault Web UI Server - Interactive web interface for managing Vault secrets."""
 
 import os
+import re
 import sys
 import json
 import logging
 import random
 import socket
+import subprocess
 import threading
 import time
 import webbrowser
@@ -19,6 +21,60 @@ logger = logging.getLogger(__name__)
 
 # Completely suppress werkzeug logs
 logging.getLogger('werkzeug').disabled = True
+
+# Valid Kubernetes resource/namespace name (DNS subdomain)
+K8S_NAME_RE = re.compile(r'^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$')
+
+
+def rollout_state(deploy: dict) -> dict:
+    """Compute rollout progress from a deployment JSON (mirrors `kubectl rollout status` logic)."""
+    spec_replicas = (deploy.get('spec') or {}).get('replicas') or 0
+    status = deploy.get('status') or {}
+    updated = status.get('updatedReplicas') or 0
+    ready = status.get('readyReplicas') or 0
+    available = status.get('availableReplicas') or 0
+    current = status.get('replicas') or 0
+    generation = (deploy.get('metadata') or {}).get('generation') or 0
+    observed = status.get('observedGeneration') or 0
+
+    progressing = next(
+        (c for c in status.get('conditions', []) if c.get('type') == 'Progressing'), {}
+    )
+    failed = progressing.get('reason') == 'ProgressDeadlineExceeded'
+    complete = (
+        observed >= generation
+        and updated == spec_replicas
+        and current == updated
+        and available == updated
+    )
+    return {
+        'total': spec_replicas,
+        'updated': updated,
+        'ready': ready,
+        'available': available,
+        'complete': complete and not failed,
+        'failed': failed,
+        'message': progressing.get('message', ''),
+    }
+
+
+def pod_state(pod: dict) -> dict:
+    """Condense a pod JSON into {name, phase, ready} for rollout progress display."""
+    meta = pod.get('metadata') or {}
+    status = pod.get('status') or {}
+    containers = status.get('containerStatuses') or []
+    total = len(containers) or len((pod.get('spec') or {}).get('containers') or [])
+    ready = sum(1 for c in containers if c.get('ready'))
+    if meta.get('deletionTimestamp'):
+        phase = 'Terminating'
+    else:
+        waiting = next(
+            (c['state']['waiting'].get('reason') for c in containers
+             if (c.get('state') or {}).get('waiting')),
+            None,
+        )
+        phase = waiting or status.get('phase', 'Unknown')
+    return {'name': meta.get('name', ''), 'phase': phase, 'ready': f'{ready}/{total}'}
 
 
 class VaultWebUI:
@@ -53,6 +109,8 @@ class VaultWebUI:
         
         self.is_running = False
         self.host = os.getenv('WEB_UI_HOST', '0.0.0.0')
+        # env_name -> (expiry_ts, aws creds dict) for kubectl's EKS exec plugin
+        self._k8s_aws_creds = {}
 
         # 端口配置：优先使用环境变量，否则使用随机端口
         env_port = os.getenv('WEB_UI_PORT')
@@ -992,6 +1050,118 @@ class VaultWebUI:
                     'error': str(e)
                 }), 500
         
+        def _kubectl_aws_creds(env_name, env_config):
+            """AWS credentials for kubectl's EKS exec plugin, via aws-vault.
+
+            Cached per environment so status polling doesn't spawn aws-vault
+            every 1.5s. Failures are cached briefly to avoid repeated MFA prompts.
+            """
+            profile = env_config.get('aws_profile')
+            if not profile:
+                return {}
+            expiry, creds = self._k8s_aws_creds.get(env_name, (0, {}))
+            if expiry < time.time():
+                fetched = self.vault_server._get_aws_credentials_via_awsvault(
+                    profile, from_web_ui=True
+                )
+                creds = {k: v for k, v in (fetched or {}).items() if v}
+                ttl = 600 if creds else 60
+                self._k8s_aws_creds[env_name] = (time.time() + ttl, creds)
+            return creds
+
+        def _kubectl(args, timeout=30):
+            """Run kubectl against the current environment's cluster.
+
+            Returns (ok, stdout, error_message).
+            """
+            env_name = self.vault_server.current_env
+            env_config = self.vault_server.environments.get(env_name) or {}
+            context = env_config.get('k8s_context')
+            if not context:
+                return False, '', f"Environment '{env_name}' has no Kubernetes cluster configured"
+            cmd = ['kubectl', '--context', context] + args
+            run_env = os.environ.copy()
+            if env_config.get('aws_profile'):
+                run_env['AWS_PROFILE'] = env_config['aws_profile']
+            if env_config.get('aws_region'):
+                run_env['AWS_REGION'] = env_config['aws_region']
+                run_env['AWS_DEFAULT_REGION'] = env_config['aws_region']
+            run_env.update(_kubectl_aws_creds(env_name, env_config))
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=timeout, env=run_env
+                )
+            except FileNotFoundError:
+                return False, '', 'kubectl not found on server'
+            except subprocess.TimeoutExpired:
+                return False, '', f'kubectl timed out after {timeout}s'
+            if result.returncode != 0:
+                err = result.stderr.strip() or f'kubectl exited with code {result.returncode}'
+                if 'provide credentials' in err or 'must be logged in' in err.lower():
+                    # stale cached creds -> drop so the next attempt refetches
+                    self._k8s_aws_creds.pop(env_name, None)
+                    err += (' — AWS credentials unavailable or expired; '
+                            'log in to this environment again and retry')
+                return False, '', err
+            return True, result.stdout, None
+
+        def _valid_deploy_params(namespace, name):
+            return bool(namespace and name
+                        and K8S_NAME_RE.match(namespace) and K8S_NAME_RE.match(name))
+
+        @self.app.route('/api/k8s/deployments', methods=['GET'])
+        def list_k8s_deployments():
+            """List deployments across all namespaces in the current environment's cluster."""
+            ok, out, err = _kubectl(['get', 'deployments', '-A', '-o', 'json'], timeout=30)
+            if not ok:
+                return jsonify({'success': False, 'error': err}), 500
+            deployments = [{
+                'namespace': d['metadata']['namespace'],
+                'name': d['metadata']['name'],
+                'ready': (d.get('status') or {}).get('readyReplicas') or 0,
+                'total': (d.get('spec') or {}).get('replicas') or 0,
+            } for d in json.loads(out).get('items', [])]
+            return jsonify({'success': True, 'deployments': deployments})
+
+        @self.app.route('/api/k8s/deployments/restart', methods=['POST'])
+        def restart_k8s_deployment():
+            """Trigger a rolling restart of a deployment."""
+            data = request.get_json() or {}
+            namespace, name = data.get('namespace'), data.get('name')
+            if not _valid_deploy_params(namespace, name):
+                return jsonify({'success': False, 'error': 'Invalid namespace or deployment name'}), 400
+            ok, out, err = _kubectl(
+                ['rollout', 'restart', f'deployment/{name}', '-n', namespace], timeout=30
+            )
+            if not ok:
+                return jsonify({'success': False, 'error': err}), 500
+            logger.info(f"Restarted deployment {namespace}/{name} in env {self.vault_server.current_env}")
+            return jsonify({'success': True, 'message': out.strip()})
+
+        @self.app.route('/api/k8s/deployments/status', methods=['GET'])
+        def k8s_deployment_status():
+            """Rollout status of a single deployment, for progress polling."""
+            namespace = request.args.get('namespace', '')
+            name = request.args.get('name', '')
+            if not _valid_deploy_params(namespace, name):
+                return jsonify({'success': False, 'error': 'Invalid namespace or deployment name'}), 400
+            ok, out, err = _kubectl(['get', 'deployment', name, '-n', namespace, '-o', 'json'], timeout=15)
+            if not ok:
+                return jsonify({'success': False, 'error': err}), 500
+            deploy = json.loads(out)
+            state = rollout_state(deploy)
+            # Per-pod live status so the rollout is visible pod by pod
+            match_labels = (((deploy.get('spec') or {}).get('selector')) or {}).get('matchLabels') or {}
+            selector = ','.join(f'{k}={v}' for k, v in match_labels.items())
+            state['pods'] = []
+            if selector:
+                ok, out, _ = _kubectl(
+                    ['get', 'pods', '-n', namespace, '-l', selector, '-o', 'json'], timeout=15
+                )
+                if ok:
+                    state['pods'] = [pod_state(p) for p in json.loads(out).get('items', [])]
+            return jsonify({'success': True, 'status': state})
+
         @self.app.route('/api/environment', methods=['GET'])
         def get_environment():
             """Get current environment info."""
