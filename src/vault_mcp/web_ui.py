@@ -74,7 +74,8 @@ def pod_state(pod: dict) -> dict:
             None,
         )
         phase = waiting or status.get('phase', 'Unknown')
-    return {'name': meta.get('name', ''), 'phase': phase, 'ready': f'{ready}/{total}'}
+    return {'name': meta.get('name', ''), 'phase': phase, 'ready': f'{ready}/{total}',
+            'created': meta.get('creationTimestamp')}
 
 
 class VaultWebUI:
@@ -1120,6 +1121,7 @@ class VaultWebUI:
                 'name': d['metadata']['name'],
                 'ready': (d.get('status') or {}).get('readyReplicas') or 0,
                 'total': (d.get('spec') or {}).get('replicas') or 0,
+                'created': d['metadata'].get('creationTimestamp'),
             } for d in json.loads(out).get('items', [])]
             return jsonify({'success': True, 'deployments': deployments})
 

@@ -3233,7 +3233,9 @@
             <div id="k8sPhaseConfirm" style="display: none;">
                 <p style="color: var(--text-secondary); margin-bottom: 12px;">This will perform a rolling restart of:</p>
                 <div class="k8s-target-box" id="k8sConfirmTarget"></div>
-                <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;" id="k8sConfirmEnvWarning"></p>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px; font-family: var(--font-mono);" id="k8sConfirmInfo"></p>
+                <div class="k8s-pod-list" id="k8sConfirmPodList" style="margin-top: 12px;"></div>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;" id="k8sConfirmEnvWarning"></p>
                 <div class="modal-actions">
                     <button class="btn-secondary" onclick="k8sShowPhase('search')">Back</button>
                     <button class="btn-primary" id="k8sConfirmBtn" onclick="k8sConfirmRestart()">Restart</button>
@@ -5571,7 +5573,7 @@
                         <div class="k8s-deploy-name">${escapeHtml(d.name)}</div>
                         <div class="k8s-deploy-ns">${escapeHtml(d.namespace)}</div>
                     </div>
-                    <div class="k8s-deploy-replicas">${d.ready}/${d.total}</div>
+                    <div class="k8s-deploy-replicas">${d.ready}/${d.total} · ${k8sAge(d.created)}</div>
                 </div>
             `).join('');
         }
@@ -5596,9 +5598,35 @@
             }
         }
 
+        function k8sAge(iso) {
+            if (!iso) return '-';
+            const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+            if (s < 120) return s + 's';
+            const m = Math.floor(s / 60);
+            if (m < 120) return m + 'm';
+            const h = Math.floor(m / 60);
+            if (h < 48) return h + 'h';
+            return Math.floor(h / 24) + 'd';
+        }
+
         function k8sSelectDeploy(namespace, name) {
             k8sSelectedDeploy = { namespace, name };
             document.getElementById('k8sConfirmTarget').textContent = `${namespace}/${name}`;
+            const d = k8sDeployments.find(x => x.namespace === namespace && x.name === name) || {};
+            document.getElementById('k8sConfirmInfo').textContent =
+                `Ready: ${d.ready ?? '-'}/${d.total ?? '-'} · Age: ${k8sAge(d.created)}`;
+            // Load current pods (with age) for the selected deployment
+            const podList = document.getElementById('k8sConfirmPodList');
+            podList.innerHTML = '<div style="padding: 12px; display: flex; justify-content: center;"><div class="spinner"></div></div>';
+            fetch(`/api/k8s/deployments/status?namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`)
+                .then(r => r.json())
+                .then(data => {
+                    const still = k8sSelectedDeploy
+                        && k8sSelectedDeploy.namespace === namespace && k8sSelectedDeploy.name === name;
+                    if (still && data.success) k8sRenderPods(data.status.pods, 'k8sConfirmPodList');
+                    else if (still) podList.innerHTML = '';
+                })
+                .catch(() => { podList.innerHTML = ''; });
             const isProd = currentEnv === 'prod';
             document.getElementById('k8sConfirmEnvWarning').innerHTML =
                 `Cluster environment: <b style="color: ${isProd ? 'var(--danger)' : 'var(--success)'};">${escapeHtml((currentEnv || 'unknown').toUpperCase())}</b>`
@@ -5639,8 +5667,8 @@
             k8sPollTimer = setInterval(k8sPollStatus, 1500);
         }
 
-        function k8sRenderPods(pods) {
-            const el = document.getElementById('k8sPodList');
+        function k8sRenderPods(pods, elId = 'k8sPodList') {
+            const el = document.getElementById(elId);
             if (!pods || !pods.length) { el.innerHTML = ''; return; }
             el.innerHTML = pods.map(p => {
                 const [r, t] = p.ready.split('/');
@@ -5649,7 +5677,7 @@
                 return `<div class="k8s-pod-row">
                     <span class="k8s-pod-dot" style="background: ${color};"></span>
                     <span class="k8s-pod-name">${escapeHtml(p.name)}</span>
-                    <span class="k8s-pod-phase">${escapeHtml(p.phase)} · ${escapeHtml(p.ready)}</span>
+                    <span class="k8s-pod-phase">${escapeHtml(p.phase)} · ${escapeHtml(p.ready)} · ${k8sAge(p.created)}</span>
                 </div>`;
             }).join('');
         }

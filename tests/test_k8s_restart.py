@@ -62,7 +62,8 @@ class TestPodState(unittest.TestCase):
             'status': {'phase': 'Running',
                        'containerStatuses': [{'ready': True, 'state': {'running': {}}}]},
         })
-        self.assertEqual(state, {'name': 'app-1', 'phase': 'Running', 'ready': '1/1'})
+        self.assertEqual(state, {'name': 'app-1', 'phase': 'Running', 'ready': '1/1',
+                                 'created': None})
 
     def test_terminating(self):
         state = pod_state({
@@ -89,7 +90,8 @@ class TestPodState(unittest.TestCase):
             'spec': {'containers': [{}, {}]},
             'status': {'phase': 'Pending'},
         })
-        self.assertEqual(state, {'name': 'app-4', 'phase': 'Pending', 'ready': '0/2'})
+        self.assertEqual(state, {'name': 'app-4', 'phase': 'Pending', 'ready': '0/2',
+                                 'created': None})
 
 
 class TestK8sNameValidation(unittest.TestCase):
