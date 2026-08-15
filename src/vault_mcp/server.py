@@ -21,8 +21,16 @@ try:
     import certifi
 except ImportError:
     certifi = None
-from mcp.server import Server
-from mcp.types import Tool, TextContent
+from mcp.server import Server, ServerRequestContext
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListResourcesResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 from mcp.server.stdio import stdio_server
 
 try:
@@ -3230,17 +3238,17 @@ async def main():
     #     except Exception as e:
     #         logger.warning(f"Failed to auto-start Web UI: {e}")
     
-    server = Server("vault-mcp")
-
     # Register resources (empty list as we don't use resources)
-    @server.list_resources()
-    async def list_resources():
-        return []
+    async def list_resources(
+        ctx: ServerRequestContext, params: PaginatedRequestParams | None
+    ) -> ListResourcesResult:
+        return ListResourcesResult(resources=[])
 
     # Register tools
-    @server.list_tools()
-    async def list_tools() -> list[Tool]:
-        return [
+    async def list_tools(
+        ctx: ServerRequestContext, params: PaginatedRequestParams | None
+    ) -> ListToolsResult:
+        return ListToolsResult(tools=[
             Tool(
                 name="vault_login",
                 description="Login to Vault in specified environment using AWS IAM authentication. Specify the environment (dev/sat/prod/local) in parameters.",
@@ -3588,10 +3596,13 @@ async def main():
                     "required": ["path"],
                 },
             ),
-        ]
+        ])
 
-    @server.call_tool()
-    async def call_tool(name: str, arguments: Any) -> list[TextContent]:
+    async def call_tool(
+        ctx: ServerRequestContext, params: CallToolRequestParams
+    ) -> CallToolResult:
+        name = params.name
+        arguments = params.arguments or {}
         try:
             if name == "vault_login":
                 environment = arguments.get("environment", "dev")
@@ -3667,13 +3678,34 @@ async def main():
                     status=arguments.get("status"),
                 )
             else:
-                result = json.dumps({"error": f"Unknown tool: {name}"})
+                return CallToolResult(
+                    content=[
+                        TextContent(
+                            type="text",
+                            text=json.dumps({"error": f"Unknown tool: {name}"}),
+                        )
+                    ],
+                    is_error=True,
+                )
 
-            return [TextContent(type="text", text=result)]
+            return CallToolResult(content=[TextContent(type="text", text=result)])
 
         except Exception as e:
             logger.error(f"Error executing tool {name}: {e}", exc_info=True)
-            return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
+            return CallToolResult(
+                content=[
+                    TextContent(type="text", text=json.dumps({"error": str(e)}))
+                ],
+                is_error=True,
+            )
+
+    server = Server(
+        "vault-mcp",
+        version="0.1.0",
+        on_list_resources=list_resources,
+        on_list_tools=list_tools,
+        on_call_tool=call_tool,
+    )
 
     # Start server
     async with stdio_server() as (read_stream, write_stream):

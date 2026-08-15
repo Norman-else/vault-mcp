@@ -22,13 +22,22 @@ def _load_server_module():
     _stub_module("hvac", Client=object)
     _stub_module("boto3")
     _stub_module("mcp")
-    _stub_module("mcp.types", Tool=object, TextContent=object)
+    _stub_module(
+        "mcp.types",
+        Tool=object,
+        TextContent=object,
+        CallToolRequestParams=object,
+        CallToolResult=object,
+        ListResourcesResult=object,
+        ListToolsResult=object,
+        PaginatedRequestParams=object,
+    )
 
     class _FakeServer:
         def __init__(self, *_args, **_kwargs):
             pass
 
-    _stub_module("mcp.server", Server=_FakeServer)
+    _stub_module("mcp.server", Server=_FakeServer, ServerRequestContext=object)
     _stub_module("mcp.server.stdio", stdio_server=lambda: None)
 
     package = types.ModuleType("vault_mcp")
