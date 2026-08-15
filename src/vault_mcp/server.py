@@ -9,7 +9,9 @@ import subprocess
 import sys
 import shutil
 import ssl
+import threading
 import time
+from contextlib import contextmanager
 from html import unescape
 from typing import Any, Optional
 from urllib.parse import urljoin, quote
@@ -868,6 +870,188 @@ PY
         
         return None
 
+    def _find_awsvault_prompt_windows(self, image_name: str = "aws-vault.exe") -> list:
+        """Return handles of visible top-level windows owned by aws-vault (Windows only).
+
+        Matching is done on the owning process image name rather than the window
+        title so it does not break when aws-vault rewords its prompt. The image
+        name is a parameter so the lookup can be exercised against a window that
+        does not require an MFA round to produce.
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+
+        # Declaring argtypes/restype is not optional here: HWND and HANDLE are
+        # pointer-sized, and ctypes defaults to a 32-bit int, which silently
+        # truncates them on 64-bit Windows.
+        user32.IsWindowVisible.argtypes = [wintypes.HWND]
+        user32.GetWindowThreadProcessId.argtypes = [
+            wintypes.HWND,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.QueryFullProcessImageNameW.argtypes = [
+            wintypes.HANDLE,
+            wintypes.DWORD,
+            wintypes.LPWSTR,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+        def _owned_by_aws_vault(pid: int) -> bool:
+            handle = kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+            )
+            if not handle:
+                return False
+            try:
+                buffer = ctypes.create_unicode_buffer(32768)
+                size = wintypes.DWORD(len(buffer))
+                if not kernel32.QueryFullProcessImageNameW(
+                    handle, 0, buffer, ctypes.byref(size)
+                ):
+                    return False
+                return os.path.basename(buffer.value).lower() == image_name.lower()
+            finally:
+                kernel32.CloseHandle(handle)
+
+        handles: list = []
+        callback_type = ctypes.WINFUNCTYPE(
+            ctypes.c_bool, wintypes.HWND, wintypes.LPARAM
+        )
+
+        def _callback(hwnd, _lparam):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value and _owned_by_aws_vault(pid.value):
+                handles.append(hwnd)
+            return True
+
+        user32.EnumWindows(callback_type(_callback), 0)
+        return handles
+
+    def _lift_window(self, hwnd) -> bool:
+        """Put a window above the others and flash its taskbar button.
+
+        Deliberately does not try to steal focus: this process owns no window, so
+        Windows denies it foreground rights and SetForegroundWindow only flashes
+        the taskbar button anyway. Marking the window topmost needs no such
+        rights and is what actually makes the dialog reachable.
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+
+        user32.SetWindowPos.argtypes = [
+            wintypes.HWND,
+            wintypes.HWND,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            wintypes.UINT,
+        ]
+        user32.SetWindowPos.restype = wintypes.BOOL
+
+        HWND_TOPMOST = wintypes.HWND(-1)
+        SWP_NOSIZE = 0x0001
+        SWP_NOMOVE = 0x0002
+        SWP_NOACTIVATE = 0x0010
+        SWP_SHOWWINDOW = 0x0040
+
+        lifted = bool(
+            user32.SetWindowPos(
+                wintypes.HWND(hwnd),
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            )
+        )
+
+        class FLASHWINFO(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.UINT),
+                ("hwnd", wintypes.HWND),
+                ("dwFlags", wintypes.DWORD),
+                ("uCount", wintypes.UINT),
+                ("dwTimeout", wintypes.DWORD),
+            ]
+
+        FLASHW_ALL = 0x00000003
+        FLASHW_TIMERNOFG = 0x0000000C
+
+        user32.FlashWindowEx.argtypes = [ctypes.POINTER(FLASHWINFO)]
+        flash = FLASHWINFO(
+            ctypes.sizeof(FLASHWINFO),
+            wintypes.HWND(hwnd),
+            FLASHW_ALL | FLASHW_TIMERNOFG,
+            0,
+            0,
+        )
+        user32.FlashWindowEx(ctypes.byref(flash))
+
+        return lifted
+
+    def _raise_awsvault_mfa_prompt(self, stop_event) -> None:
+        """Watch for aws-vault's MFA dialog and lift it until told to stop."""
+        already_lifted = set()
+
+        while not stop_event.is_set():
+            try:
+                for hwnd in self._find_awsvault_prompt_windows():
+                    if hwnd in already_lifted:
+                        continue
+                    already_lifted.add(hwnd)
+                    if self._lift_window(hwnd):
+                        logger.info("✓ Brought aws-vault MFA prompt to the front")
+                    else:
+                        logger.warning(
+                            "Found the aws-vault MFA prompt but could not bring it "
+                            "to the front; check the taskbar"
+                        )
+            except Exception as exc:
+                logger.warning(f"Stopped watching for the aws-vault MFA prompt: {exc}")
+                return
+            stop_event.wait(0.25)
+
+    @contextmanager
+    def _awsvault_prompt_raiser(self, system: str, from_web_ui: bool):
+        """Keep the aws-vault MFA dialog reachable while we block on the subprocess.
+
+        Only needed for the Web UI on Windows. In the CLI case the prompt appears
+        in the terminal the user is already looking at, and on macOS the osascript
+        prompt comes to the front on its own.
+        """
+        if not (from_web_ui and system == "Windows"):
+            yield None
+            return
+
+        stop_event = threading.Event()
+        watcher = threading.Thread(
+            target=self._raise_awsvault_mfa_prompt,
+            args=(stop_event,),
+            daemon=True,
+        )
+        watcher.start()
+        try:
+            yield watcher
+        finally:
+            stop_event.set()
+            watcher.join(timeout=2)
+
     def _build_awsvault_credentials_command(
         self,
         aws_vault_path: str,
@@ -951,7 +1135,8 @@ PY
                 system=system,
                 from_web_ui=from_web_ui,
             )
-            result = subprocess.run(cmd, **run_kwargs)
+            with self._awsvault_prompt_raiser(system, from_web_ui):
+                result = subprocess.run(cmd, **run_kwargs)
             stdout = result.stdout
             stderr = result.stderr
             returncode = result.returncode
