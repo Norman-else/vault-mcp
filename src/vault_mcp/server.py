@@ -870,6 +870,22 @@ PY
         
         return None
 
+    @staticmethod
+    def _format_audit_timestamp(moment: datetime) -> str:
+        """Format an audit timestamp like 'Aug 5, 2026, 9:07:03 PM'.
+
+        The day and hour are unpadded. The obvious spelling for that is
+        strftime's "%-d"/"%-I", but those are a glibc extension: on Windows
+        strftime rejects the whole string with "Invalid format string", which
+        made every secret share fail there. Build the unpadded parts by hand so
+        the output is identical on every platform.
+        """
+        hour = moment.hour % 12 or 12
+        return (
+            f"{moment.strftime('%b')} {moment.day}, {moment.year}, "
+            f"{hour}:{moment.strftime('%M:%S %p')}"
+        )
+
     def _find_awsvault_prompt_windows(self, image_name: str = "aws-vault.exe") -> list:
         """Return handles of visible top-level windows owned by aws-vault (Windows only).
 
@@ -2794,7 +2810,7 @@ PY
         try:
             now = datetime.now()
             timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-            audit_timestamp = now.strftime("%-b %-d, %Y, %-I:%M:%S %p")
+            audit_timestamp = self._format_audit_timestamp(now)
             env = self.current_env.upper() if self.current_env else "N/A"
             formatted_data = self._safe_format_data(data)
 

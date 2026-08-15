@@ -1,6 +1,7 @@
 import asyncio
 import json
 import unittest
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from vault_mcp.server import VaultMCPServer
@@ -155,6 +156,33 @@ class ShareSecretKeysTests(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["shared_keys"], ["DB_HOST"])
+
+
+class AuditTimestampTests(unittest.TestCase):
+    """The audit timestamp used to be built with strftime's "%-d"/"%-I", a glibc
+    extension that makes strftime raise "Invalid format string" on Windows and
+    took every secret share down with it. These assertions hold on any platform."""
+
+    def test_day_and_hour_are_not_zero_padded(self):
+        formatted = VaultMCPServer._format_audit_timestamp(
+            datetime(2026, 8, 5, 21, 7, 3)
+        )
+
+        self.assertIn(" 5, 2026, ", formatted)
+        self.assertNotIn(" 05, ", formatted)
+        self.assertIn("9:07:03", formatted)
+        self.assertNotIn("09:07:03", formatted)
+        self.assertTrue(formatted.startswith(datetime(2026, 8, 5).strftime("%b")))
+
+    def test_midnight_and_noon_render_as_twelve(self):
+        self.assertIn(
+            "12:00:00",
+            VaultMCPServer._format_audit_timestamp(datetime(2026, 8, 5, 0, 0, 0)),
+        )
+        self.assertIn(
+            "12:00:00",
+            VaultMCPServer._format_audit_timestamp(datetime(2026, 8, 5, 12, 0, 0)),
+        )
 
 
 if __name__ == "__main__":
