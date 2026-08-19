@@ -919,13 +919,6 @@ class VaultWebUI:
                         'error': 'No environment is currently logged in'
                     }), 400
 
-                # Only support dev and prod environments
-                if current_env not in ['dev', 'prod']:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Unsupported environment: {current_env}. Only dev and prod are supported.'
-                    }), 400
-
                 # Extract service name from role_name
                 # e.g., "data-service" -> "data"
                 # e.g., "item-management-service" -> "item-management"
