@@ -1745,6 +1745,45 @@ PY
             or None
         )
 
+    def _resolve_db_request_approver_id(
+        self, approver: Optional[str]
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Resolve whose DB credential requests to scan for, as (user_id, error).
+
+        None means the configured operator, i.e. requests addressed to me.
+        "any"/"all"/"*" resolves to a None user_id, meaning every request in the
+        channel regardless of who was asked to approve it. Anything else is a
+        Slack user ID or a name to look up, so the operator can cover for a
+        colleague who is away.
+        """
+        if not approver:
+            operator_user_id = self._get_slack_operator_user_id()
+            if not operator_user_id:
+                return None, (
+                    "No Slack operator user configured. Set "
+                    "SLACK_OPERATOR_USER_ID or SLACK_USER_ID."
+                )
+            return operator_user_id, None
+
+        approver = approver.strip()
+        if approver.lower() in ("any", "all", "*"):
+            return None, None
+        if re.fullmatch(r"[UW][A-Z0-9]{6,}", approver):
+            return approver, None
+
+        matches = self._find_slack_users(approver)
+        if not matches:
+            return None, f"No Slack user matches approver '{approver}'."
+        if len(matches) > 1:
+            names = ", ".join(
+                sorted(m.get("real_name") or m.get("display_name") or m["id"] for m in matches)
+            )
+            return None, (
+                f"Approver '{approver}' matches multiple Slack users ({names}). "
+                "Pass the exact Slack user ID instead."
+            )
+        return matches[0]["id"], None
+
     def _resolve_db_request_channel_id(self, channel_id: Optional[str] = None) -> Optional[str]:
         """Resolve the DB credential request channel without exposing messages."""
         if channel_id:
@@ -1882,13 +1921,18 @@ PY
         self,
         message: dict,
         channel_id: str,
-        current_user_id: str,
+        current_user_id: Optional[str],
     ) -> Optional[dict]:
-        """Parse a DB credential request and return only safe structured fields."""
+        """Parse a DB credential request and return only safe structured fields.
+
+        A falsy current_user_id accepts requests addressed to anyone; the caller
+        is then responsible for deciding whose requests it may act on.
+        """
         raw_text = self._slack_message_text(message)
-        current_user_mention = rf"<@{re.escape(current_user_id)}(?:\|[^>]+)?>"
-        if not re.search(current_user_mention, raw_text):
-            return None
+        if current_user_id:
+            current_user_mention = rf"<@{re.escape(current_user_id)}(?:\|[^>]+)?>"
+            if not re.search(current_user_mention, raw_text):
+                return None
 
         normalized = self._normalize_slack_text(raw_text)
         if "Please provide the DB credential to" not in normalized:
@@ -1912,7 +1956,11 @@ PY
             return None
 
         recipient = self._get_slack_user_profile_summary(recipient_user_id)
-        operator = self._get_slack_user_profile_summary(current_user_id)
+        operator = (
+            self._get_slack_user_profile_summary(current_user_id)
+            if current_user_id
+            else {}
+        )
         ts = message.get("ts")
 
         return {
@@ -1972,6 +2020,15 @@ PY
             return True
         if not observed_name:
             return False
+
+        # The configured operator may have sent this while covering for another
+        # approver; without this their own shares never clear the request.
+        configured_operator_id = self._get_slack_operator_user_id()
+        if configured_operator_id and self._name_matches(
+            self._get_slack_user_profile_summary(configured_operator_id),
+            observed_name,
+        ):
+            return True
 
         configured_names = os.getenv(
             "SLACK_DB_REQUEST_TRUSTED_SENDER_NAMES",
@@ -2317,12 +2374,17 @@ PY
         channel_id: Optional[str] = None,
         include_stale: bool = True,
         limit: int = 100,
+        approver: Optional[str] = None,
     ) -> str:
         """Return all unprocessed DB credential requests for the operator, deduped and aged.
 
         Requests sharing the same (environment, service, recipient) are collapsed to
         the newest one. Each returned request carries an age tier (fresh/stale) so the
         caller can require explicit confirmation for stale items.
+
+        approver defaults to the configured operator; pass a Slack user ID or name
+        to cover for an approver who is away, or "any" for every request in the
+        channel.
         """
         if not SLACK_AVAILABLE or not self.slack_client:
             return json.dumps(
@@ -2335,17 +2397,9 @@ PY
                 }
             )
 
-        operator_user_id = self._get_slack_operator_user_id()
-        if not operator_user_id:
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": (
-                        "No Slack operator user configured. Set "
-                        "SLACK_OPERATOR_USER_ID or SLACK_USER_ID."
-                    ),
-                }
-            )
+        approver_user_id, approver_error = self._resolve_db_request_approver_id(approver)
+        if approver_error:
+            return json.dumps({"success": False, "error": approver_error})
 
         resolved_channel_id = self._resolve_db_request_channel_id(channel_id)
         if not resolved_channel_id:
@@ -2369,13 +2423,13 @@ PY
             logger.error(f"Error scanning DB requests: {e}")
             return json.dumps({"success": False, "error": str(e)})
 
-        # Parse every workflow request directed at the operator, newest first.
+        # Parse every workflow request directed at the approver, newest first.
         parsed_requests = []
         for message in messages:
             parsed = self._parse_db_credential_request_message(
                 message=message,
                 channel_id=resolved_channel_id,
-                current_user_id=operator_user_id,
+                current_user_id=approver_user_id,
             )
             if parsed:
                 parsed_requests.append(parsed)
@@ -2438,6 +2492,11 @@ PY
             {
                 "success": True,
                 "channel_id": resolved_channel_id,
+                "approver": (
+                    self._get_slack_user_profile_summary(approver_user_id)
+                    if approver_user_id
+                    else None
+                ),
                 "fresh_hours": self._db_request_fresh_seconds() // 3600,
                 "lookback_days": self._db_request_lookback_seconds() // 86400,
                 "counts": {
@@ -2496,18 +2555,6 @@ PY
                 }
             )
 
-        operator_user_id = self._get_slack_operator_user_id()
-        if not operator_user_id:
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": (
-                        "No Slack operator user configured. Set "
-                        "SLACK_OPERATOR_USER_ID or SLACK_USER_ID."
-                    ),
-                }
-            )
-
         try:
             response = self.slack_client.conversations_replies(
                 channel=channel_id,
@@ -2522,10 +2569,12 @@ PY
                 ),
                 None,
             )
+            # Addressee-agnostic: the configured-channel check above is the
+            # boundary, and the operator may be covering for another approver.
             if not request_message or not self._parse_db_credential_request_message(
                 message=request_message,
                 channel_id=channel_id,
-                current_user_id=operator_user_id,
+                current_user_id=None,
             ):
                 return json.dumps(
                     {
@@ -3660,7 +3709,8 @@ async def main():
                 name="vault_get_pending_db_credential_requests",
                 description=(
                     "Return ALL unprocessed DB credential workflow requests directed at the configured "
-                    "Slack operator, not just the latest. Requests sharing the same (environment, service, "
+                    "Slack operator (or at another approver via 'approver'), not just the latest. "
+                    "Requests sharing the same (environment, service, "
                     "recipient) are deduplicated to the newest one. Each request includes an age tier "
                     "('fresh' vs 'stale') and processed status. Stale requests (older than the fresh window) "
                     "are returned separately and should be confirmed individually before sending. Only "
@@ -3683,6 +3733,15 @@ async def main():
                                 "pending requests in a separate 'stale_requests' list."
                             ),
                             "default": True,
+                        },
+                        "approver": {
+                            "type": "string",
+                            "description": (
+                                "Whose requests to scan for. Omit for the configured operator "
+                                "(requests addressed to you). Pass a Slack user ID or name to "
+                                "cover for an approver who is away, or 'any' for every request "
+                                "in the channel regardless of approver."
+                            ),
                         },
                         "limit": {
                             "type": "integer",
@@ -3861,6 +3920,7 @@ async def main():
                     channel_id=arguments.get("channel_id"),
                     include_stale=arguments.get("include_stale", True),
                     limit=arguments.get("limit", 100),
+                    approver=arguments.get("approver"),
                 )
             elif name == "vault_get_db_credential_request_status":
                 result = await vault_server.vault_get_db_credential_request_status(
