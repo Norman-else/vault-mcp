@@ -1,3 +1,9 @@
+# Local guidance and frontend dependencies
+WARP.md
+node_modules/
+frontend/coverage/
+frontend/test-results/
+
 # Python
 __pycache__/
 *.py[cod]

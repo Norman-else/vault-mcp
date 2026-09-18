@@ -35,6 +35,22 @@ cd /path/to/vault-mcp
 pip install -e .
 ```
 
+### TypeScript 前端开发与构建
+
+Web UI 使用 React + TypeScript + Vite，Flask API 和 MCP 服务保持不变。Node.js 22.12+ 仅用于开发和构建，运行已构建的 Python 包不需要 Node。
+
+```powershell
+npm --prefix frontend ci
+npm --prefix frontend test
+npm --prefix frontend run build
+```
+
+构建输出位于 `src/vault_mcp/static/ui/`，由 Flask 提供并随 Python wheel 打包。修改前端后必须重新构建；发布 Python 包前先执行上述命令，再运行 `python -m build`。提交前端源代码时也应更新构建产物。
+
+开发模式使用 `npm --prefix frontend run dev`，API 默认代理到 `http://localhost:8765`，可在 `frontend/vite.config.ts` 调整。开发时另行启动 Flask，并设置 `WEB_UI_PORT=8765`。
+
+无真实 Vault 的手工浏览器验证可运行 `python tests/mock_frontend_server.py`，打开 `http://localhost:8766`。该页面全部为模拟数据，环境名称也仅是模拟状态，不会登录 AWS、操作 Kubernetes 或修改 PostgreSQL MCP 配置。
+
 ### 2. 启动 Web UI
 
 #### 方法 1：直接启动（推荐）

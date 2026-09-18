@@ -1211,8 +1211,9 @@ class VaultWebUI:
         """Return the HTML template for the UI."""
         template_path = os.path.join(
             os.path.dirname(__file__),
-            'templates',
-            'vault_ui.html'
+            'static',
+            'ui',
+            'index.html'
         )
         try:
             with open(template_path, 'r', encoding='utf-8') as f:
