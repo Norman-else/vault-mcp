@@ -34,6 +34,10 @@ class FrontendAssetsTests(unittest.TestCase):
             self.assertTrue(result.data)
             result.close()
 
+    def test_legacy_ui_is_not_packaged(self):
+        package = Path(__file__).resolve().parents[1] / 'src' / 'vault_mcp'
+        self.assertFalse((package / 'templates' / 'vault_ui.html').exists())
+
     def test_static_assets_do_not_extend_idle_timeout(self):
         self.ui.last_access_time = 123
         self.client.get('/static/ui/index.html').close()

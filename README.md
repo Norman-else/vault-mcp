@@ -597,10 +597,14 @@ vault-mcp/
 │   ├── __init__.py
 │   ├── server.py              # MCP 服务器（AI 集成）
 │   ├── web_ui.py              # Web UI 服务器（Flask）
-│   ├── templates/
-│   │   └── vault_ui.html      # Web UI 前端（HTML+CSS+JS）
 │   └── static/
-│       └── favicon.png        # 网站图标
+│       ├── favicon.png        # 网站图标
+│       └── ui/                # Packaged React UI build
+├── frontend/
+│   ├── client/                # React + TypeScript source
+│   ├── shared/                # API types
+│   └── tests/                 # Frontend regression tests
+├── tests/                     # Python API and asset tests
 ├── pyproject.toml             # 项目配置和依赖
 └── README.md                  # 本文件
 ```
