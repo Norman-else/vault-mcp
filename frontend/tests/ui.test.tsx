@@ -125,6 +125,44 @@ const workspace = () =>
   );
 
 describe("migrated UI regressions", () => {
+  it("separates version metadata and preserves explicit versus latest selection", async () => {
+    const defaultHandler = handler;
+    handler = (url, options) => url.pathname === "/api/secrets/versions" ? {
+      current_version: 20,
+      versions: [20, 19, 18].map((version) => ({
+        version,
+        created_time: "2026-09-10T15:35:26Z",
+        deleted_time: version === 19 ? "2026-09-11T00:00:00Z" : "",
+        destroyed: version === 18,
+      })),
+    } : defaultHandler(url, options);
+    workspace();
+    fireEvent.click(await screen.findByRole("button", { name: "alpha" }));
+    await screen.findByText("Secret Data");
+    const trigger = screen.getByRole("combobox", { name: "Version" });
+    expect(trigger.textContent).toBe("Latest (v20)");
+    fireEvent.click(trigger);
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(4);
+    expect(options[1].querySelector(".select-option-heading")?.textContent).toBe("v20Latest");
+    expect(options[1].querySelector(".select-option-description")?.textContent).toBeTruthy();
+    expect(options[2].querySelector(".select-option-badge")?.textContent).toBe("Deleted");
+    expect(options[3].querySelector(".select-option-badge")?.textContent).toBe("Destroyed");
+    fireEvent.click(options[1]);
+    await waitFor(() => expect(trigger.textContent).toBe("v20"));
+    await screen.findByText("Secret Data");
+    expect(calls.some((call) => call.path.includes("version=20"))).toBe(true);
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "End" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    await screen.findByRole("heading", { name: "Version 18 destroyed" });
+    expect(trigger.textContent).toBe("v18");
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Home" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    await screen.findByText("Secret Data");
+    expect(trigger.textContent).toBe("Latest (v20)");
+  });
   it("preserves the themed editor and edits when switching appearance", () => {
     document.documentElement.dataset.theme = "light";
     const onChange = vi.fn();

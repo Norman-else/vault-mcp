@@ -16,13 +16,20 @@ export function Select({
   options,
   onChange,
   disabled = false,
+  popupMinWidth = 220,
 }: {
   id: string;
   label?: string;
   value: string;
-  options: { value: string; label: string }[];
+  options: {
+    value: string;
+    label: string;
+    description?: string;
+    badges?: string[];
+  }[];
   onChange: (value: string) => void;
   disabled?: boolean;
+  popupMinWidth?: number;
 }) {
   const listId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -55,14 +62,15 @@ export function Select({
       const below = window.innerHeight - rect.bottom - 12;
       const above = rect.top - 12;
       const upwards = below < 220 && above > below;
+      const width = Math.min(Math.max(rect.width, popupMinWidth), window.innerWidth - 16);
       setPosition({
         position: "fixed",
-        width: Math.min(Math.max(rect.width, 220), window.innerWidth - 16),
+        width,
         left: Math.max(
           8,
           Math.min(
             rect.left,
-            window.innerWidth - Math.max(rect.width, 220) - 8,
+            window.innerWidth - width - 8,
           ),
         ),
         top: upwards ? undefined : rect.bottom + 4,
@@ -87,7 +95,7 @@ export function Select({
       window.removeEventListener("scroll", positionPopup, true);
       document.removeEventListener("pointerdown", outside);
     };
-  }, [expanded]);
+  }, [expanded, popupMinWidth]);
   useEffect(() => {
     if (expanded)
       popup.current?.children[active]?.scrollIntoView({ block: "nearest" });
@@ -180,7 +188,17 @@ export function Select({
                 onMouseMove={() => setActive(index)}
                 onClick={() => choose(index)}
               >
-                <span>{option.label}</span>
+                <span className="select-option-content">
+                  <span className="select-option-heading">
+                    <span>{option.label}</span>
+                    {option.badges?.map((badge) => (
+                      <span className="select-option-badge" key={badge}>{badge}</span>
+                    ))}
+                  </span>
+                  {option.description && (
+                    <span className="select-option-description">{option.description}</span>
+                  )}
+                </span>
                 {option.value === value && <Icon name="check" />}
               </div>
             ))}

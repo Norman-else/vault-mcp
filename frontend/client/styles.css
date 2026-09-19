@@ -2235,7 +2235,41 @@ kbd {
 .select-option[aria-selected="true"] {
   color: var(--primary);
 }
+.select-option-content {
+  flex: 1;
+  min-width: 0;
+}
+.select-option-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.select-option-heading > span:first-child {
+  font-weight: 600;
+}
+.select-option-badge {
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.select-option-description {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .select-option .icon {
+  flex-shrink: 0;
   width: 14px;
   height: 14px;
 }

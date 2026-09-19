@@ -519,6 +519,7 @@ export function SecretPanel({
           <label htmlFor="secret-version">Version</label>
           <Select
             id="secret-version"
+            popupMinWidth={300}
             value={String(selectedVersion ?? "latest")}
             onChange={(value) =>
               switchVersion(value === "latest" ? undefined : Number(value))
@@ -528,12 +529,18 @@ export function SecretPanel({
               {
                 value: "latest",
                 label: `Latest${currentVersion ? ` (v${currentVersion})` : ""}`,
+                description: "Automatically follows the latest",
               },
               ...[...versions]
                 .sort((a, b) => b.version - a.version)
                 .map((item) => ({
                   value: String(item.version),
-                  label: `v${item.version}${item.version === currentVersion ? " · latest" : ""}${item.destroyed ? " · destroyed" : item.deleted_time ? " · deleted" : ""} · ${formatTime(item.created_time)}`,
+                  label: `v${item.version}`,
+                  description: formatTime(item.created_time),
+                  badges: [
+                    ...(item.version === currentVersion ? ["Latest"] : []),
+                    ...(item.destroyed ? ["Destroyed"] : item.deleted_time ? ["Deleted"] : []),
+                  ],
                 })),
             ]}
           />
