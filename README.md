@@ -390,6 +390,24 @@ WEB_UI_HOST=0.0.0.0
 打开 Vault 管理界面
 ```
 
+### 9. vault_sync_db_creds_to_postgres_mcp - 同步 DB 凭证到 PostgreSQL MCP
+
+为指定 service 生成动态数据库凭证，并直接写入 `~/postgresql-mcp-config/environments.json`（与 Web UI 的 Sync 按钮同一套逻辑）。凭证不会返回给 AI。
+
+**参数**：
+- `service` (必需): 数据库角色，如 `item-management-service`（也接受 `database/creds/item-management-service`）
+
+**功能**：
+- 环境名为 `{env}-{service 去掉 -service}`，如 `dev-item-management`
+- 环境已存在：只更新 `user` / `password`
+- 环境不存在：从当前环境的 `secret/application` 读取 `host.db_server` 新建
+- 需要先 `vault_login` 到目标环境
+
+**示例**：
+```
+把 dev 的 accounting-service 数据库凭证同步到 postgres mcp
+```
+
 ## 🔒 隐私和安全配置
 
 ### 默认模式 (RETURN_DATA_TO_AI=true)
@@ -630,6 +648,7 @@ vault-mcp/
 | `vault_list` | 列表 | ✅ 只列出路径 |
 | `vault_logout` | 清理 | ✅ 只清除本地状态 |
 | `vault_web_ui_open` | UI | ✅ 只启动服务器 |
+| `vault_sync_db_creds_to_postgres_mcp` | 写本地文件 | ✅ 只写 `~/postgresql-mcp-config/environments.json`，不修改 Vault |
 
 ### Web UI：完整管理功能
 

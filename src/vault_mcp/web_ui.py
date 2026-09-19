@@ -81,19 +81,6 @@ def pod_state(pod: dict) -> dict:
 class VaultWebUI:
     """Web UI server for Vault secret management."""
 
-    @staticmethod
-    def get_mcp_config_path():
-        """
-        Get the PostgreSQL MCP config file path based on the operating system.
-
-        Returns:
-            str: Path to the PostgreSQL MCP config file
-        """
-        home_dir = os.path.expanduser('~')
-        config_dir = os.path.join(home_dir, 'postgresql-mcp-config')
-        config_file = os.path.join(config_dir, 'environments.json')
-        return config_file
-
     def __init__(self, vault_server):
         """
         Initialize the Web UI server.
@@ -841,7 +828,7 @@ class VaultWebUI:
         def check_mcp_config():
             """Check if PostgreSQL MCP config file exists."""
             try:
-                mcp_config_path = self.get_mcp_config_path()
+                mcp_config_path = self.vault_server.get_mcp_config_path()
 
                 if os.path.exists(mcp_config_path):
                     # Try to read and validate the file
@@ -911,131 +898,10 @@ class VaultWebUI:
                         'error': 'Missing required fields: role_name, username, password'
                     }), 400
 
-                # Get current environment
-                current_env = self.vault_server.current_env
-                if not current_env:
-                    return jsonify({
-                        'success': False,
-                        'error': 'No environment is currently logged in'
-                    }), 400
-
-                # Extract service name from role_name
-                # e.g., "data-service" -> "data"
-                # e.g., "item-management-service" -> "item-management"
-                # e.g., "warehouse-management-service" -> "warehouse-management"
-                service_name = role_name
-                if service_name.endswith('-service'):
-                    service_name = service_name[:-8]  # Remove "-service" suffix
-
-                # Build MCP environment name: {env}-{service_name}
-                # e.g., "dev-data", "prod-item-management", "dev-warehouse-management"
-                mcp_env = f'{current_env}-{service_name}'
-
-
-                # Path to PostgreSQL MCP config file
-                mcp_config_path = self.get_mcp_config_path()
-
-                # Read existing config
-                try:
-                    with open(mcp_config_path, 'r') as f:
-                        mcp_config = json.load(f)
-                except FileNotFoundError:
-                    return jsonify({
-                        'success': False,
-                        'error': f'PostgreSQL MCP config file not found: {mcp_config_path}'
-                    }), 404
-                except json.JSONDecodeError:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Invalid JSON in PostgreSQL MCP config file'
-                    }), 500
-
-                # Ensure environments key exists
-                if 'environments' not in mcp_config:
-                    mcp_config['environments'] = {}
-
-                # Check if environment exists
-                env_exists = mcp_env in mcp_config['environments']
-
-                if env_exists:
-                    # Environment exists - just update credentials
-                    if 'database' not in mcp_config['environments'][mcp_env]:
-                        mcp_config['environments'][mcp_env]['database'] = {}
-
-                    mcp_config['environments'][mcp_env]['database']['user'] = username
-                    mcp_config['environments'][mcp_env]['database']['password'] = password
-
-                    logger.info(f"Updated existing environment {mcp_env} with new credentials")
-                else:
-                    # Environment doesn't exist - create new configuration
-                    # Read db_server from secret/application
-                    db_host = None
-                    try:
-                        response = self.vault_server.vault_client.secrets.kv.v2.read_secret_version(
-                            path='application',
-                            mount_point='secret'
-                        )
-                        app_data = response['data']['data']
-                        db_host = app_data.get('host.db_server')
-
-                        if not db_host:
-                            return jsonify({
-                                'success': False,
-                                'error': f'host.db_server not found in secret/application. Cannot create new environment {mcp_env}.'
-                            }), 400
-                    except Exception as e:
-                        return jsonify({
-                            'success': False,
-                            'error': f'Failed to read secret/application: {str(e)}. Cannot create new environment {mcp_env}.'
-                        }), 500
-
-                    # Create new environment configuration
-                    mcp_config['environments'][mcp_env] = {
-                        'description': f'[{service_name.title()}] {current_env.title()} database environment',
-                        'database': {
-                            'host': db_host,
-                            'port': 5432,
-                            'database': role_name.replace('-', '_'),  # Convert role name to database name
-                            'user': username,
-                            'password': password,
-                            'ssl_mode': 'prefer'
-                        },
-                        'max_query_limit': 1000000,
-                        'default_query_limit': 200000,
-                        'read_only': False
-                    }
-
-                    logger.info(f"Created new environment {mcp_env} with host {db_host}")
-
-                # Write back to file
-                try:
-                    with open(mcp_config_path, 'w') as f:
-                        json.dump(mcp_config, f, indent=2)
-                except Exception as e:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Failed to write to config file: {str(e)}'
-                    }), 500
-
-                # Prepare response message
-                if env_exists:
-                    message = f'Credentials updated in {mcp_env} environment'
-                    action = 'updated'
-                else:
-                    message = f'New environment {mcp_env} created and credentials synced'
-                    action = 'created'
-
-                # Audit log
-                logger.info(f"Synced credentials to PostgreSQL MCP config: {mcp_env} (action: {action})")
-
-                return jsonify({
-                    'success': True,
-                    'message': message,
-                    'environment': mcp_env,
-                    'config_path': mcp_config_path,
-                    'action': action,
-                    'service_name': service_name
-                })
+                payload, status = self.vault_server.sync_db_creds_to_postgres_mcp(
+                    role_name, username, password
+                )
+                return jsonify(payload), status
 
             except Exception as e:
                 logger.error(f"Error syncing to PostgreSQL MCP: {e}")

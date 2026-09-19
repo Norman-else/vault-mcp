@@ -3427,6 +3427,154 @@ PY
                 {"success": False, "error": str(e), "path": f"{mount_point}/{path}"}
             )
 
+    @staticmethod
+    def get_mcp_config_path() -> str:
+        """Path to the PostgreSQL MCP config file (~/postgresql-mcp-config/environments.json)."""
+        return os.path.join(
+            os.path.expanduser('~'), 'postgresql-mcp-config', 'environments.json'
+        )
+
+    def sync_db_creds_to_postgres_mcp(
+        self, role_name: str, username: str, password: str
+    ) -> tuple[dict, int]:
+        """
+        Write database credentials into the PostgreSQL MCP config file.
+
+        Shared by the Web UI sync route and the vault_sync_db_creds_to_postgres_mcp tool.
+
+        Returns:
+            (payload, http_status). The payload never contains the credentials.
+        """
+        current_env = self.current_env
+        if not current_env:
+            return {'success': False, 'error': 'No environment is currently logged in'}, 400
+
+        # "item-management-service" -> "item-management"
+        service_name = role_name[:-8] if role_name.endswith('-service') else role_name
+        # MCP environment name: {env}-{service_name}, e.g. "dev-data", "prod-item-management"
+        mcp_env = f'{current_env}-{service_name}'
+
+        mcp_config_path = self.get_mcp_config_path()
+        try:
+            with open(mcp_config_path, 'r') as f:
+                mcp_config = json.load(f)
+        except FileNotFoundError:
+            return {
+                'success': False,
+                'error': f'PostgreSQL MCP config file not found: {mcp_config_path}',
+            }, 404
+        except json.JSONDecodeError:
+            return {'success': False, 'error': 'Invalid JSON in PostgreSQL MCP config file'}, 500
+
+        environments = mcp_config.setdefault('environments', {})
+        env_exists = mcp_env in environments
+
+        if env_exists:
+            # Environment exists - just update credentials
+            database = environments[mcp_env].setdefault('database', {})
+            database['user'] = username
+            database['password'] = password
+        else:
+            # New environment - host comes from the current env's secret/application
+            try:
+                response = self.vault_client.secrets.kv.v2.read_secret_version(
+                    path='application', mount_point='secret'
+                )
+                db_host = response['data']['data'].get('host.db_server')
+            except Exception as e:
+                return {
+                    'success': False,
+                    'error': f'Failed to read secret/application: {str(e)}. Cannot create new environment {mcp_env}.',
+                }, 500
+            if not db_host:
+                return {
+                    'success': False,
+                    'error': f'host.db_server not found in secret/application. Cannot create new environment {mcp_env}.',
+                }, 400
+
+            environments[mcp_env] = {
+                'description': f'[{service_name.title()}] {current_env.title()} database environment',
+                'database': {
+                    'host': db_host,
+                    'port': 5432,
+                    'database': role_name.replace('-', '_'),
+                    'user': username,
+                    'password': password,
+                    'ssl_mode': 'prefer',
+                },
+                'max_query_limit': 1000000,
+                'default_query_limit': 200000,
+                'read_only': False,
+            }
+
+        # Serialize before opening so a failure cannot truncate the existing config
+        config_text = json.dumps(mcp_config, indent=2)
+        try:
+            with open(mcp_config_path, 'w') as f:
+                f.write(config_text)
+        except Exception as e:
+            return {'success': False, 'error': f'Failed to write to config file: {str(e)}'}, 500
+
+        action = 'updated' if env_exists else 'created'
+        logger.info(f"Synced credentials to PostgreSQL MCP config: {mcp_env} (action: {action})")
+        return {
+            'success': True,
+            'message': (
+                f'Credentials updated in {mcp_env} environment'
+                if env_exists
+                else f'New environment {mcp_env} created and credentials synced'
+            ),
+            'environment': mcp_env,
+            'config_path': mcp_config_path,
+            'action': action,
+            'service_name': service_name,
+        }, 200
+
+    async def vault_sync_db_creds_to_postgres_mcp(self, service: str) -> str:
+        """
+        Generate dynamic database credentials and sync them to the PostgreSQL MCP config.
+
+        The credentials are written to the config file and never returned to the AI.
+
+        Args:
+            service: Database role (e.g., item-management-service) or full path
+                (database/creds/item-management-service)
+
+        Returns:
+            JSON string with the synced MCP environment name and action
+        """
+        if not self._ensure_authenticated():
+            return json.dumps(
+                {"success": False, "error": "Not authenticated. Please login first."}
+            )
+
+        role_name = (service or "").strip().strip("/").removeprefix("database/creds/")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", role_name):
+            return json.dumps(
+                {"success": False, "error": f"Invalid database service: {service!r}"}
+            )
+
+        try:
+            response = self.vault_client.read(f"database/creds/{role_name}")
+            if not response or "data" not in response:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "Path not found or no data returned",
+                        "path": f"database/creds/{role_name}",
+                    }
+                )
+            data = response["data"]
+            payload, _ = self.sync_db_creds_to_postgres_mcp(
+                role_name, data.get("username"), data.get("password")
+            )
+            if payload.get("success"):
+                payload["lease_duration"] = response.get("lease_duration")
+            return json.dumps(payload)
+        except Exception as e:
+            logger.error(f"Error syncing DB credentials to PostgreSQL MCP: {e}")
+            return json.dumps({"success": False, "error": str(e)})
+
     async def vault_web_ui_open(self) -> str:
         """
         Open Vault Web UI for interactive management.
@@ -3623,6 +3771,26 @@ async def main():
                 inputSchema={
                     "type": "object",
                     "properties": {},
+                },
+            ),
+            Tool(
+                name="vault_sync_db_creds_to_postgres_mcp",
+                description=(
+                    "Generate dynamic database credentials for a service and write them into the local "
+                    "PostgreSQL MCP config (~/postgresql-mcp-config/environments.json) as environment "
+                    "{env}-{service without -service}. Updates user/password if the environment exists, "
+                    "otherwise creates it. The credentials are NEVER returned to the AI. "
+                    "Requires vault_login for the target environment first."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "service": {
+                            "type": "string",
+                            "description": "Database role, e.g., item-management-service (database/creds/<service> is also accepted)",
+                        },
+                    },
+                    "required": ["service"],
                 },
             ),
             Tool(
@@ -3898,6 +4066,10 @@ async def main():
                 result = await vault_server.vault_kv_delete(
                     path=arguments.get("path"),
                     mount_point=arguments.get("mount_point", "secret"),
+                )
+            elif name == "vault_sync_db_creds_to_postgres_mcp":
+                result = await vault_server.vault_sync_db_creds_to_postgres_mcp(
+                    service=arguments.get("service"),
                 )
             elif name == "vault_share_secret":
                 result = await vault_server.vault_share_secret(

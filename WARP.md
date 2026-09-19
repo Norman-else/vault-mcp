@@ -101,6 +101,7 @@ The server exposes these MCP tools (callable by AI):
 - **vault_read**: Read dynamic secrets (database creds, AWS creds, etc.)
 - **vault_list**: List any Vault path
 - **vault_web_ui_open**: Launch interactive web UI
+- **vault_sync_db_creds_to_postgres_mcp**: Generate DB creds and write them to the local PostgreSQL MCP config (creds never returned to the AI)
 
 ## Key Design Patterns
 
