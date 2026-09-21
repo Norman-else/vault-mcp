@@ -14,7 +14,7 @@ import Workspace from "../client/App";
 import { Session } from "../client/Session";
 import { DatabasePanel } from "../client/DatabasePanel";
 import { SecretPanel } from "../client/SecretPanel";
-import { K8sModal } from "../client/K8sModal";
+import { K8sModal, rolloutHeading } from "../client/K8sModal";
 import { api } from "../client/api";
 import { parseSecretJson } from "../client/utils";
 
@@ -125,6 +125,28 @@ const workspace = () =>
   );
 
 describe("migrated UI regressions", () => {
+  it("explains new pod readiness instead of counting old pods as progress", async () => {
+    const original = handler;
+    const status = { total: 2, updated: 1, ready: 2, available: 2, complete: false, failed: false,
+      observed: true, new_ready: 0, message: "", pods: [
+        { name: "new-pod", phase: "Running", ready: "0/1", is_new: true, is_ready: false, detail: "Readiness probe failed" },
+        { name: "old-pod", phase: "Running", ready: "1/1", is_new: false, is_ready: true },
+      ] };
+    handler = (url, options) => url.pathname === "/api/k8s/deployments/status" ? { status } : original(url, options);
+    render(<K8sModal environment="dev" onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /service/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm Restart" }));
+    await screen.findByRole("heading", { name: "Waiting for new pods to become ready…" });
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.getByText("NEW · replacement")).toBeTruthy();
+    expect(screen.getByText("OLD · being replaced")).toBeTruthy();
+    expect(screen.getByText("New pods ready").textContent).toContain("0 / 2");
+    expect(screen.getByText("Running · not ready")).toBeTruthy();
+    expect(rolloutHeading({ ...status, observed: false })).toContain("controller");
+    expect(rolloutHeading({ ...status, pods_error: "Forbidden" })).toContain("unavailable");
+    expect(rolloutHeading({ ...status, complete: true })).toContain("Restart complete");
+    expect(rolloutHeading({ ...status, failed: true })).toContain("failed");
+  });
   it("separates version metadata and preserves explicit versus latest selection", async () => {
     const defaultHandler = handler;
     handler = (url, options) => url.pathname === "/api/secrets/versions" ? {
@@ -396,7 +418,7 @@ describe("migrated UI regressions", () => {
     await screen.findByText("service-pod");
     expect(calls.some((call) => call.path.endsWith("/restart"))).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Confirm Restart" }));
-    await screen.findByText("Restart complete — all replicas ready");
+    await screen.findByRole("heading", { name: "Restart complete — all replicas available" });
     expect(calls.find((call) => call.path.endsWith("/restart"))?.body).toEqual({
       namespace: "default",
       name: "service",
@@ -467,7 +489,7 @@ describe("migrated UI regressions", () => {
       await screen.findByRole("button", { name: /service.*default/ }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Confirm Restart" }));
-    await screen.findByText("Rollout failed");
+    await screen.findByRole("heading", { name: "Rollout failed — check pod details" });
     expect(screen.getByText("Progress deadline exceeded")).toBeTruthy();
     expect(screen.queryByText(/Restart complete/)).toBeNull();
   });

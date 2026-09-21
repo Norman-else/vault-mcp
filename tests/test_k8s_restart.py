@@ -1,6 +1,9 @@
+import json
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from vault_mcp.web_ui import K8S_NAME_RE, pod_state, rollout_state
+from vault_mcp.web_ui import K8S_NAME_RE, VaultWebUI, pod_state, rollout_state
 
 
 def _deploy(generation=2, observed=2, spec=3, updated=3, current=3, ready=3,
@@ -92,6 +95,57 @@ class TestPodState(unittest.TestCase):
         })
         self.assertEqual(state, {'name': 'app-4', 'phase': 'Pending', 'ready': '0/2',
                                  'created': None})
+
+
+class TestRestartPodDetails(unittest.TestCase):
+    def test_new_running_pod_is_not_ready(self):
+        pod = {'metadata': {'annotations': {'kubectl.kubernetes.io/restartedAt': 'now'}},
+               'status': {'phase': 'Running', 'conditions': [
+                   {'type': 'Ready', 'status': 'False', 'message': 'Readiness probe failed'}]}}
+        state = pod_state(pod, 'now')
+        self.assertTrue(state['is_new'])
+        self.assertFalse(state['is_ready'])
+        self.assertEqual(state['detail'], 'Readiness probe failed')
+
+    def test_old_ready_pod_and_terminating_pod(self):
+        pod = {'metadata': {}, 'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}
+        self.assertFalse(pod_state(pod, 'now')['is_new'])
+        self.assertTrue(pod_state(pod, 'now')['is_ready'])
+        pod['metadata']['deletionTimestamp'] = 'now'
+        self.assertFalse(pod_state(pod, 'now')['is_ready'])
+
+    def test_init_container_failure(self):
+        pod = {'status': {'initContainerStatuses': [{'state': {'waiting': {
+            'reason': 'ImagePullBackOff', 'message': 'Unable to pull image'}}}]}}
+        state = pod_state(pod, 'now')
+        self.assertEqual(state['phase'], 'ImagePullBackOff')
+        self.assertEqual(state['detail'], 'Unable to pull image')
+
+
+class TestStatusAPI(unittest.TestCase):
+    def test_new_readiness_excludes_old_pods_and_reports_fetch_errors(self):
+        server = SimpleNamespace(current_env='dev', environments={'dev': {'k8s_context': 'test'}})
+        client = VaultWebUI(server).app.test_client()
+        deploy = _deploy(updated=1)
+        deploy['spec'].update({'selector': {'matchLabels': {'app': 'test'}},
+                              'template': {'metadata': {'annotations': {
+                                  'kubectl.kubernetes.io/restartedAt': 'now'}}}})
+        pods = [{'metadata': {'name': 'old'}, 'status': {'conditions': [
+            {'type': 'Ready', 'status': 'True'}]}},
+            {'metadata': {'name': 'new', 'annotations': {
+                'kubectl.kubernetes.io/restartedAt': 'now'}},
+             'status': {'conditions': [{'type': 'Ready', 'status': 'False'}]}}]
+        def result(data, code=0):
+            return SimpleNamespace(returncode=code, stdout=json.dumps(data), stderr='Forbidden' if code else '')
+        with patch('vault_mcp.web_ui.subprocess.run', side_effect=[result(deploy), result({'items': pods})]):
+            state = client.get('/api/k8s/deployments/status?namespace=default&name=test').json['status']
+        self.assertEqual(state['new_ready'], 0)
+        self.assertFalse(state['pods'][0]['is_new'])
+        self.assertTrue(state['pods'][1]['is_new'])
+        with patch('vault_mcp.web_ui.subprocess.run', side_effect=[result(deploy), result({}, 1)]):
+            state = client.get('/api/k8s/deployments/status?namespace=default&name=test').json['status']
+        self.assertIsNone(state['new_ready'])
+        self.assertEqual(state['pods_error'], 'Forbidden')
 
 
 class TestK8sNameValidation(unittest.TestCase):

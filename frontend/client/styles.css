@@ -2815,6 +2815,17 @@ progress {
   font-size: 13px;
   color: var(--secondary);
 }
+.rollout-counts { display: grid; gap: 8px; padding: 12px 0; border-block: 1px solid var(--border); }
+.rollout-counts > span { display: flex; justify-content: space-between; gap: 16px; color: var(--secondary); }
+.rollout-counts strong, .pod-generation { color: var(--primary); }
+.pod-generation, .pod-detail { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.pod-detail { color: var(--secondary); }
+.rollout-history { margin-top: 18px; font-size: 12px; }
+.rollout-history summary, .rollout-summary summary { cursor: pointer; }
+.rollout-history ol { list-style: none; padding: 0; max-height: 180px; overflow-y: auto; }
+.rollout-history li { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.rollout-history time { flex-shrink: 0; color: var(--muted); }
+.rollout-history li span { overflow-wrap: anywhere; min-width: 0; }
 .pod-list {
   border: 1px solid var(--border);
   margin-top: 16px;

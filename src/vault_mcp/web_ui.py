@@ -48,6 +48,7 @@ def rollout_state(deploy: dict) -> dict:
         and available == updated
     )
     return {
+        'observed': observed >= generation,
         'total': spec_replicas,
         'updated': updated,
         'ready': ready,
@@ -58,7 +59,7 @@ def rollout_state(deploy: dict) -> dict:
     }
 
 
-def pod_state(pod: dict) -> dict:
+def pod_state(pod: dict, restart_marker=None) -> dict:
     """Condense a pod JSON into {name, phase, ready} for rollout progress display."""
     meta = pod.get('metadata') or {}
     status = pod.get('status') or {}
@@ -74,8 +75,24 @@ def pod_state(pod: dict) -> dict:
             None,
         )
         phase = waiting or status.get('phase', 'Unknown')
-    return {'name': meta.get('name', ''), 'phase': phase, 'ready': f'{ready}/{total}',
-            'created': meta.get('creationTimestamp')}
+    result = {'name': meta.get('name', ''), 'phase': phase, 'ready': f'{ready}/{total}',
+              'created': meta.get('creationTimestamp')}
+    if restart_marker is not None:
+        conditions = status.get('conditions') or []
+        result['is_new'] = (meta.get('annotations') or {}).get(
+            'kubectl.kubernetes.io/restartedAt') == restart_marker
+        result['is_ready'] = (not meta.get('deletionTimestamp') and any(
+            c.get('type') == 'Ready' and c.get('status') == 'True' for c in conditions))
+        waiting = next((c.get('state', {}).get('waiting') for c in
+                        (status.get('initContainerStatuses') or []) + containers
+                        if c.get('state', {}).get('waiting')), {})
+        condition = next((c for c in conditions if c.get('status') == 'False'
+                          and c.get('type') in ('PodScheduled', 'Initialized', 'Ready')), {})
+        result['detail'] = (waiting.get('message') or waiting.get('reason')
+                            or condition.get('message') or condition.get('reason') or '')
+        if waiting and phase != 'Terminating':
+            result['phase'] = waiting.get('reason') or phase
+    return result
 
 
 class VaultWebUI:
@@ -1014,13 +1031,22 @@ class VaultWebUI:
             # Per-pod live status so the rollout is visible pod by pod
             match_labels = (((deploy.get('spec') or {}).get('selector')) or {}).get('matchLabels') or {}
             selector = ','.join(f'{k}={v}' for k, v in match_labels.items())
+            marker = (((deploy.get('spec') or {}).get('template') or {}).get('metadata') or {}).get(
+                'annotations', {}).get('kubectl.kubernetes.io/restartedAt')
             state['pods'] = []
+            state['pods_error'] = ''
             if selector:
-                ok, out, _ = _kubectl(
+                ok, out, err = _kubectl(
                     ['get', 'pods', '-n', namespace, '-l', selector, '-o', 'json'], timeout=15
                 )
                 if ok:
-                    state['pods'] = [pod_state(p) for p in json.loads(out).get('items', [])]
+                    state['pods'] = [pod_state(p, marker) for p in json.loads(out).get('items', [])]
+                else:
+                    state['pods_error'] = err or 'Pod status unavailable'
+            else:
+                state['pods_error'] = 'Pod selector unavailable'
+            state['new_ready'] = (sum(1 for p in state['pods'] if p.get('is_new') and p.get('is_ready'))
+                                  if marker and not state['pods_error'] else None)
             return jsonify({'success': True, 'status': state})
 
         @self.app.route('/api/environment', methods=['GET'])
