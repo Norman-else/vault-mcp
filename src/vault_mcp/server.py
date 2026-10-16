@@ -78,6 +78,9 @@ logger = logging.getLogger(__name__)
 # Log file location on startup
 logger.info(f"Vault MCP Server starting... Logs: {log_file}")
 
+# How long an MCP-initiated aws-vault call may wait for the user to answer the MFA prompt.
+AWSVAULT_TIMEOUT_SECONDS = 180
+
 # Reduce third-party library verbose logs
 logging.getLogger('werkzeug').setLevel(logging.WARNING)
 logging.getLogger('mcp.server').setLevel(logging.WARNING)
@@ -1047,9 +1050,8 @@ PY
     def _awsvault_prompt_raiser(self, system: str, from_web_ui: bool):
         """Keep the aws-vault MFA dialog reachable while we block on the subprocess.
 
-        Only needed for the Web UI on Windows. In the CLI case the prompt appears
-        in the terminal the user is already looking at, and on macOS the osascript
-        prompt comes to the front on its own.
+        Only needed for the Web UI on Windows. On macOS the osascript prompt comes
+        to the front on its own.
         """
         if not (from_web_ui and system == "Windows"):
             yield None
@@ -1082,7 +1084,7 @@ PY
         }
 
         if not from_web_ui:
-            run_kwargs["timeout"] = 30
+            run_kwargs["timeout"] = AWSVAULT_TIMEOUT_SECONDS
 
         if from_web_ui and system == "Windows":
             run_kwargs["creationflags"] = 0x08000000
@@ -1097,7 +1099,8 @@ PY
                 run_kwargs,
             )
 
-        if from_web_ui and system == "Darwin":
+        # Also for MCP calls: over stdio there is no terminal to show a prompt in.
+        if system == "Darwin":
             return (
                 [
                     aws_vault_path,
@@ -1141,7 +1144,7 @@ PY
                 logger.info("⏳ If MFA prompt appears, please enter your code...")
             else:
                 logger.info(
-                    "⏳ If MFA prompt appears, please enter your code (30 seconds timeout)..."
+                    f"⏳ If MFA prompt appears, please enter your code ({AWSVAULT_TIMEOUT_SECONDS} seconds timeout)..."
                 )
 
             system = platform.system()
@@ -1193,10 +1196,11 @@ PY
             }
 
         except subprocess.TimeoutExpired:
-            timeout = 90 if from_web_ui else 30
-            logger.error(f"✗ aws-vault command timed out ({timeout} seconds)")
+            logger.error(f"✗ aws-vault command timed out ({AWSVAULT_TIMEOUT_SECONDS} seconds)")
             logger.error("Please make sure you enter MFA code when prompted")
-            self._last_awsvault_error = f"aws-vault command timed out after {timeout} seconds"
+            self._last_awsvault_error = (
+                f"aws-vault command timed out after {AWSVAULT_TIMEOUT_SECONDS} seconds"
+            )
             return None
         except Exception as e:
             logger.warning(f"Failed to get credentials via aws-vault: {e}")

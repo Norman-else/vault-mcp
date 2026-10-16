@@ -8,8 +8,8 @@ from vault_mcp.server import VaultMCPServer
 
 class AwsVaultMfaWaitTests(unittest.TestCase):
     """The Web UI login path must not cap how long aws-vault may take: the user
-    has to find and answer the MFA prompt first. The CLI path keeps its 30s cap,
-    because there the prompt appears in the terminal they are already looking at."""
+    has to find and answer the MFA prompt first. The MCP path is capped at 180s,
+    and on macOS it must use the osascript dialog because stdio has no terminal."""
 
     def _login(self, from_web_ui):
         server = VaultMCPServer()
@@ -62,11 +62,12 @@ class AwsVaultMfaWaitTests(unittest.TestCase):
             },
         )
 
-    def test_cli_login_keeps_its_timeout(self):
+    def test_mcp_login_uses_osascript_prompt_with_180s_timeout(self):
         _, run_mock = self._login(from_web_ui=False)
 
-        _, kwargs = run_mock.call_args
-        self.assertEqual(kwargs["timeout"], 30)
+        args, kwargs = run_mock.call_args
+        self.assertIn("--prompt=osascript", args[0])
+        self.assertEqual(kwargs["timeout"], 180)
 
 
 if __name__ == "__main__":
