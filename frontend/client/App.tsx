@@ -381,11 +381,10 @@ export default function Workspace({
               <span>Search</span>
               <kbd>Ctrl K</kbd>
             </button>
-            <div className="header-environment">
-              <span className="status-dot" aria-hidden="true" />
-              {environment.locked ? (
-                <span className="environment-locked">{environment.environment.toUpperCase()}</span>
-              ) : (
+            {/* Locked (Infra Desktop): the desktop shows and switches the environment itself. */}
+            {!environment.locked && (
+              <div className="header-environment">
+                <span className="status-dot" aria-hidden="true" />
                 <Select
                   id="environment"
                   label="Environment"
@@ -396,8 +395,8 @@ export default function Workspace({
                   }))}
                   onChange={onSwitch}
                 />
-              )}
-            </div>
+              </div>
+            )}
             <Timeout />
           </div>
         </header>

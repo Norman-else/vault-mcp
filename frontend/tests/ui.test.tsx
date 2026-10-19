@@ -393,7 +393,7 @@ describe("migrated UI regressions", () => {
       screen.getByRole("combobox", { name: "Environment" }).textContent,
     ).toContain("DEV");
   });
-  it("hides the environment selector when the server is locked", async () => {
+  it("shows no environment in the header when the server is locked", async () => {
     const original = handler;
     handler = (url, options) =>
       url.pathname === "/api/environment"
@@ -401,13 +401,15 @@ describe("migrated UI regressions", () => {
         : url.pathname === "/api/timeout"
           ? { disabled: true, remaining_seconds: null }
           : original(url, options);
-    render(<Session />);
+    const { container } = render(<Session />);
     await screen.findByRole("button", { name: "alpha" });
     expect(screen.queryByRole("combobox", { name: "Environment" })).toBeNull();
-    expect(screen.getByText("DEV")).toBeTruthy();
+    // Infra Desktop shows and switches the environment itself.
+    expect(container.querySelector(".header-environment")).toBeNull();
+    expect(screen.queryByText("DEV")).toBeNull();
     expect(screen.queryByText(/Session closed/)).toBeNull();
   });
-  it("locks the login page to the server's environment", async () => {
+  it("shows no environment choice on the login page when locked", async () => {
     const original = handler;
     handler = (url, options) =>
       url.pathname === "/api/environment"
@@ -416,7 +418,7 @@ describe("migrated UI regressions", () => {
     render(<Session />);
     await screen.findByRole("button", { name: "Log in" });
     expect(screen.queryByRole("combobox", { name: "Environment" })).toBeNull();
-    expect(screen.getByText("DEV")).toBeTruthy();
+    expect(screen.queryByText("DEV")).toBeNull();
   });
   it("keeps the environment selector when not locked", async () => {
     render(<Session />);

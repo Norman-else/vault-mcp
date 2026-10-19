@@ -2910,8 +2910,3 @@ progress {
   .secret-toolbar { align-items: center; }
   .version-control .custom-select { width: auto; max-width: min(230px, 52vw); }
 }
-/* Standalone mode (Infra Desktop): environment shown as a fixed label */
-.environment-locked {
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}

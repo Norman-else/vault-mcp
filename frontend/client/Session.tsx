@@ -120,9 +120,7 @@ export function Session() {
               void login(target);
             }}
           >
-            {environment.locked ? (
-              <p className="environment-locked">{target.toUpperCase()}</p>
-            ) : (
+            {!environment.locked && (
               <>
                 <label htmlFor="login-environment">Environment</label>
                 <Select
