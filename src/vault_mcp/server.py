@@ -37,6 +37,9 @@ from mcp.server.stdio import stdio_server
 
 from vault_mcp.ambient import ambient_credentials_enabled
 
+# botocore credential sources accepted in ambient mode: the caller's credential endpoint or env vars.
+AMBIENT_CREDENTIAL_METHODS = {"container-role", "env"}
+
 try:
     from slack_sdk import WebClient
     from slack_sdk.errors import SlackApiError
@@ -1127,6 +1130,12 @@ PY
         if credentials is None:
             raise ValueError(
                 "No AWS credentials available from the environment (VAULT_MCP_AWS_CREDENTIALS=ambient)"
+            )
+        # Only what the caller hands us: never fall back to long-lived keys in ~/.aws or instance roles.
+        if getattr(credentials, "method", None) not in AMBIENT_CREDENTIAL_METHODS:
+            raise ValueError(
+                "VAULT_MCP_AWS_CREDENTIALS=ambient only accepts credentials provided by the caller "
+                f"(container credential endpoint or AWS_* env vars), found: {getattr(credentials, 'method', 'unknown')}"
             )
         frozen = credentials.get_frozen_credentials()
         return frozen.access_key, frozen.secret_key, frozen.token

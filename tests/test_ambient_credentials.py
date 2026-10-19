@@ -15,9 +15,9 @@ def _frozen(access="AK", secret="SK", token="TOK"):
     return SimpleNamespace(access_key=access, secret_key=secret, token=token)
 
 
-def _session_returning(creds):
+def _session_returning(creds, method="container-role"):
     """boto3.Session stand-in whose get_credentials() yields `creds` (None = no credentials)."""
-    credentials = None if creds is None else SimpleNamespace(get_frozen_credentials=lambda: creds)
+    credentials = None if creds is None else SimpleNamespace(get_frozen_credentials=lambda: creds, method=method)
     return mock.Mock(return_value=SimpleNamespace(get_credentials=lambda: credentials))
 
 
@@ -64,6 +64,17 @@ class AmbientLoginTests(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertIn("No AWS credentials available", result["message"])
         awsvault.assert_not_called()
+
+    def test_ambient_login_refuses_long_lived_shared_credentials(self):
+        result, _switch, awsvault = self._login(AMBIENT, _session_returning(_frozen(), method="shared-credentials-file"))
+        self.assertFalse(result["success"])
+        self.assertIn("only accepts credentials provided by the caller", result["message"])
+        self.iam_login.assert_not_called()
+        awsvault.assert_not_called()
+
+    def test_ambient_login_accepts_env_credentials(self):
+        result, _switch, _awsvault = self._login(AMBIENT, _session_returning(_frozen(), method="env"))
+        self.assertTrue(result["success"], result)
 
     def test_default_mode_still_uses_aws_vault(self):
         _result, _switch, awsvault = self._login({}, _session_returning(_frozen()))
