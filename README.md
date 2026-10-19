@@ -269,6 +269,22 @@ WEB_UI_HOST=0.0.0.0
 - **键盘导航**：上下箭头选择结果，Enter 打开，ESC 关闭
 - **匹配高亮**：显示匹配类型（路径匹配/Key 匹配）
 
+## 🖥️ 独立运行 Web UI（Infra Desktop）
+
+[Infra Desktop](https://github.com/Norman-else/infra-desktop) 不经过 MCP，直接把 Web UI 当作独立进程启动：
+
+```bash
+PYTHONPATH=src VAULT_MCP_AWS_CREDENTIALS=ambient .venv/Scripts/python.exe -m vault_mcp.web_ui --env dev --port 9291
+```
+
+- `--env dev|sat|prod`：只服务这一个环境，页面上不再显示环境切换；`--host` 默认 `127.0.0.1`。
+- `VAULT_MCP_AWS_CREDENTIALS=ambient`：不调用 aws-vault、不弹 MFA，也不改全局 kubectl context。AWS 凭证只接受调用方提供的：容器凭证端点（`AWS_CONTAINER_CREDENTIALS_FULL_URI`，Infra Desktop 用的就是它）或 `AWS_*` 环境变量；不会退回到 `~/.aws/credentials` 里的长期 key。
+- Vault token 剩余不到 5 分钟时自动重新登录；`POST /api/login` 也会用当前凭证重新登录（调用方续期 AWS 凭证后调用）。
+- 启动后在 stdout 打印 `VAULT_WEB_UI_READY http://127.0.0.1:<port>`；端口被占用时以退出码 2 结束。
+- `GET /api/health` 返回 `vault`（`authenticated` / `unauthenticated` / `error`）、`environment` 和可选的 `token_ttl`（秒），不含任何 token 或 secret。
+- `--version` 输出 `vault-mcp-web-ui standalone 1`，供 Infra Desktop 检测是否支持该模式。
+- 独立模式下不会因空闲自动关闭，进程生命周期由调用方负责。MCP 模式（未设置该环境变量）行为不变。
+
 ## 🛠️ MCP 工具参考
 
 ### 1. vault_login - 登录 Vault
