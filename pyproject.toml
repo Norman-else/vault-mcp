@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 vault-mcp = "vault_mcp.server:main"
+vault-mcp-web-ui = "vault_mcp.web_ui:main"
 
 [build-system]
 requires = ["hatchling"]
