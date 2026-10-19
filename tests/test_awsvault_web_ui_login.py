@@ -44,6 +44,11 @@ def _load_server_module():
     package.__path__ = []
     sys.modules["vault_mcp"] = package
     _stub_module("vault_mcp.web_ui", VaultWebUI=object)
+    ambient_path = pathlib.Path(__file__).resolve().parents[1] / "src" / "vault_mcp" / "ambient.py"
+    ambient_spec = importlib.util.spec_from_file_location("vault_mcp.ambient", ambient_path)
+    ambient = importlib.util.module_from_spec(ambient_spec)
+    sys.modules["vault_mcp.ambient"] = ambient
+    ambient_spec.loader.exec_module(ambient)
 
     server_path = pathlib.Path(__file__).resolve().parents[1] / "src" / "vault_mcp" / "server.py"
     spec = importlib.util.spec_from_file_location("vault_mcp.server", server_path)

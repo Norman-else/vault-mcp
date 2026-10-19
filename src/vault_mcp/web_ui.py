@@ -17,6 +17,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.serving import make_server
 
+from vault_mcp.ambient import ambient_credentials_enabled
+
 logger = logging.getLogger(__name__)
 
 # Completely suppress werkzeug logs
@@ -958,12 +960,15 @@ class VaultWebUI:
                 return False, '', f"Environment '{env_name}' has no Kubernetes cluster configured"
             cmd = ['kubectl', '--context', context] + args
             run_env = os.environ.copy()
-            if env_config.get('aws_profile'):
+            ambient = ambient_credentials_enabled()
+            # Ambient: credentials come from the caller's environment; a profile would override them.
+            if env_config.get('aws_profile') and not ambient:
                 run_env['AWS_PROFILE'] = env_config['aws_profile']
             if env_config.get('aws_region'):
                 run_env['AWS_REGION'] = env_config['aws_region']
                 run_env['AWS_DEFAULT_REGION'] = env_config['aws_region']
-            run_env.update(_kubectl_aws_creds(env_name, env_config))
+            if not ambient:
+                run_env.update(_kubectl_aws_creds(env_name, env_config))
             try:
                 result = subprocess.run(
                     cmd, capture_output=True, text=True, timeout=timeout, env=run_env

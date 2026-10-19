@@ -35,6 +35,8 @@ from mcp.types import (
 )
 from mcp.server.stdio import stdio_server
 
+from vault_mcp.ambient import ambient_credentials_enabled
+
 try:
     from slack_sdk import WebClient
     from slack_sdk.errors import SlackApiError
@@ -134,6 +136,8 @@ class VaultMCPServer:
         self._auth_check_cached_at = 0.0
         self._auth_check_cached_client_id: Optional[int] = None
         self._last_awsvault_error: Optional[str] = None
+        # When the current Vault token expires (epoch seconds), if Vault reported a lease.
+        self.vault_token_expires_at: Optional[float] = None
 
         # Slack configuration
         self.slack_enabled = os.getenv("SLACK_ENABLED", "false").lower() == "true"
@@ -1117,6 +1121,16 @@ PY
             run_kwargs,
         )
 
+    def _ambient_aws_credentials(self, region: str) -> tuple[str, str, Optional[str]]:
+        """AWS credentials from boto3's default chain (env vars, container credential endpoint, ...)."""
+        credentials = boto3.Session(region_name=region).get_credentials()
+        if credentials is None:
+            raise ValueError(
+                "No AWS credentials available from the environment (VAULT_MCP_AWS_CREDENTIALS=ambient)"
+            )
+        frozen = credentials.get_frozen_credentials()
+        return frozen.access_key, frozen.secret_key, frozen.token
+
     def _get_aws_credentials_via_awsvault(self, aws_profile: str, from_web_ui: bool = False):
         """Proactively obtain AWS credentials via aws-vault.
 
@@ -1484,8 +1498,9 @@ PY
             logger.info(f"Attempting to login to Vault at {vault_addr}")
             logger.info(f"Using AWS profile: {aws_profile}, region: {aws_region}")
 
-            # Step 1: Switch kubectl context (if needed)
-            if not self._switch_k8s_context(k8s_context):
+            # Step 1: Switch kubectl context (if needed). Not with ambient credentials: the caller
+            # passes its own kubeconfig, and the user's global kubectl context must not change.
+            if not ambient_credentials_enabled() and not self._switch_k8s_context(k8s_context):
                 logger.warning(
                     "Failed to switch kubectl context, but continuing anyway..."
                 )
@@ -1497,13 +1512,22 @@ PY
             access_key = None
             secret_key = None
             session_token = None
+            aws_env = None
+            awsvault_error = None
 
-            # Method 1: Try to get credentials via aws-vault
-            logger.info("Trying to get credentials from aws-vault...")
-            aws_env = self._get_aws_credentials_via_awsvault(aws_profile, from_web_ui=from_web_ui)
-            awsvault_error = self._last_awsvault_error
+            if ambient_credentials_enabled():
+                # Method 0: caller-provided credentials (Infra Desktop); never prompt for MFA here.
+                access_key, secret_key, session_token = self._ambient_aws_credentials(aws_region)
+                logger.info("✓ Using caller-provided AWS credentials (VAULT_MCP_AWS_CREDENTIALS=ambient)")
+            else:
+                # Method 1: Try to get credentials via aws-vault
+                logger.info("Trying to get credentials from aws-vault...")
+                aws_env = self._get_aws_credentials_via_awsvault(aws_profile, from_web_ui=from_web_ui)
+                awsvault_error = self._last_awsvault_error
 
-            if aws_env and aws_env.get("AWS_ACCESS_KEY_ID"):
+            if access_key:
+                pass  # caller-provided (ambient) credentials, set above
+            elif aws_env and aws_env.get("AWS_ACCESS_KEY_ID"):
                 access_key = aws_env["AWS_ACCESS_KEY_ID"]
                 secret_key = aws_env["AWS_SECRET_ACCESS_KEY"]
                 session_token = aws_env.get("AWS_SESSION_TOKEN")
@@ -1560,6 +1584,8 @@ PY
                     raise
 
             token = response["auth"]["client_token"]
+            lease = response["auth"].get("lease_duration") or 0
+            self.vault_token_expires_at = time.time() + lease if lease else None
             self._init_vault_client(token, vault_addr)
 
             logger.info("Successfully authenticated with Vault using AWS IAM")
