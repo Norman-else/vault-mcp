@@ -120,16 +120,22 @@ export function Session() {
               void login(target);
             }}
           >
-            <label htmlFor="login-environment">Environment</label>
-            <Select
-              id="login-environment"
-              value={target}
-              onChange={setTarget}
-              options={environment.available_environments.map((value) => ({
-                value,
-                label: value.toUpperCase(),
-              }))}
-            />
+            {environment.locked ? (
+              <p className="environment-locked">{target.toUpperCase()}</p>
+            ) : (
+              <>
+                <label htmlFor="login-environment">Environment</label>
+                <Select
+                  id="login-environment"
+                  value={target}
+                  onChange={setTarget}
+                  options={environment.available_environments.map((value) => ({
+                    value,
+                    label: value.toUpperCase(),
+                  }))}
+                />
+              </>
+            )}
             <button className="button primary" disabled={!target}>
               Log in
             </button>
@@ -153,15 +159,21 @@ export function Session() {
 export function Timeout() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  // Standalone mode (Infra Desktop) never shuts down when idle.
+  const [disabled, setDisabled] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     let timer: number;
     async function poll() {
       try {
-        const result = await api<{ remaining_seconds: number }>(
+        const result = await api<{ remaining_seconds: number | null; disabled?: boolean }>(
           "/api/timeout",
           { signal: controller.signal },
         );
+        if (!controller.signal.aborted && result.disabled) {
+          setDisabled(true);
+          return;
+        }
         if (!controller.signal.aborted) {
           setRemaining(result.remaining_seconds);
           setUnavailable(false);
@@ -178,6 +190,7 @@ export function Timeout() {
       window.clearTimeout(timer);
     };
   }, []);
+  if (disabled) return null;
   if (unavailable || remaining === 0)
     return (
       <span className="timeout danger" role="alert">

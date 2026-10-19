@@ -16,6 +16,8 @@ export interface Environment {
   environment: string;
   authenticated: boolean;
   available_environments: string[];
+  /** Standalone mode (Infra Desktop): the server serves only this environment */
+  locked?: boolean;
 }
 type Mode = "kv" | "db";
 
@@ -381,16 +383,20 @@ export default function Workspace({
             </button>
             <div className="header-environment">
               <span className="status-dot" aria-hidden="true" />
-              <Select
-                id="environment"
-                label="Environment"
-                value={environment.environment}
-                options={environment.available_environments.map((value) => ({
-                  value,
-                  label: value.toUpperCase(),
-                }))}
-                onChange={onSwitch}
-              />
+              {environment.locked ? (
+                <span className="environment-locked">{environment.environment.toUpperCase()}</span>
+              ) : (
+                <Select
+                  id="environment"
+                  label="Environment"
+                  value={environment.environment}
+                  options={environment.available_environments.map((value) => ({
+                    value,
+                    label: value.toUpperCase(),
+                  }))}
+                  onChange={onSwitch}
+                />
+              )}
             </div>
             <Timeout />
           </div>

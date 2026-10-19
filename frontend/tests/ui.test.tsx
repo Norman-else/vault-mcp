@@ -393,6 +393,36 @@ describe("migrated UI regressions", () => {
       screen.getByRole("combobox", { name: "Environment" }).textContent,
     ).toContain("DEV");
   });
+  it("hides the environment selector when the server is locked", async () => {
+    const original = handler;
+    handler = (url, options) =>
+      url.pathname === "/api/environment"
+        ? { ...environment, available_environments: ["dev"], locked: true }
+        : url.pathname === "/api/timeout"
+          ? { disabled: true, remaining_seconds: null }
+          : original(url, options);
+    render(<Session />);
+    await screen.findByRole("button", { name: "alpha" });
+    expect(screen.queryByRole("combobox", { name: "Environment" })).toBeNull();
+    expect(screen.getByText("DEV")).toBeTruthy();
+    expect(screen.queryByText(/Session closed/)).toBeNull();
+  });
+  it("locks the login page to the server's environment", async () => {
+    const original = handler;
+    handler = (url, options) =>
+      url.pathname === "/api/environment"
+        ? { environment: "dev", authenticated: false, available_environments: ["dev"], locked: true }
+        : original(url, options);
+    render(<Session />);
+    await screen.findByRole("button", { name: "Log in" });
+    expect(screen.queryByRole("combobox", { name: "Environment" })).toBeNull();
+    expect(screen.getByText("DEV")).toBeTruthy();
+  });
+  it("keeps the environment selector when not locked", async () => {
+    render(<Session />);
+    await screen.findByRole("button", { name: "alpha" });
+    expect(screen.getByRole("combobox", { name: "Environment" })).toBeTruthy();
+  });
   it("does not expire a new session for aborted stale unauthorized requests", async () => {
     const listener = vi.fn();
     window.addEventListener("vault-auth-expired", listener);
