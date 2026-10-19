@@ -285,6 +285,12 @@ PYTHONPATH=src VAULT_MCP_AWS_CREDENTIALS=ambient .venv/Scripts/python.exe -m vau
 - `--version` 输出 `vault-mcp-web-ui standalone 1`，供 Infra Desktop 检测是否支持该模式。
 - 独立模式下不会因空闲自动关闭，进程生命周期由调用方负责。MCP 模式（未设置该环境变量）行为不变。
 
+### 发布版本
+
+在 GitHub 的 **Actions → Release → Run workflow** 中选 `main` 和版本递增方式（patch / minor / major）。workflow 会先跑 Python 和前端测试，然后改 `pyproject.toml` 的版本号、提交、打 `vX.Y.Z` tag 并发布 GitHub Release。
+
+Infra Desktop（uvx 模式，即没有本地 checkout 的用户）每次启动 Vault 前会检查最新的 Release，验证它支持独立模式后就用这个版本；最新版本不可用时会继续用上一个能用的版本。所以改完 vault-mcp 只需要发布 Release，不需要再发桌面版本。
+
 ## 🛠️ MCP 工具参考
 
 ### 1. vault_login - 登录 Vault

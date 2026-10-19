@@ -1,0 +1,61 @@
+name: Release
+
+# Run from the Actions tab on main: tests, bumps the version, tags vX.Y.Z and publishes a GitHub
+# Release. Infra Desktop (uvx mode) picks up the latest release automatically.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Python tests
+        run: |
+          uv sync
+          PYTHONPATH=src uv run python -m unittest discover -s tests
+      - name: Frontend tests
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend test
+
+      - name: Bump version, tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          uv version --bump "$BUMP" --no-sync
+          VERSION=$(uv version --short)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "release: v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
+          gh release create "v$VERSION" --title "v$VERSION" --generate-notes
