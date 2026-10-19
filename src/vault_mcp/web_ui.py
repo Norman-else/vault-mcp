@@ -1,5 +1,6 @@
 """Vault Web UI Server - Interactive web interface for managing Vault secrets."""
 
+import argparse
 import os
 import re
 import sys
@@ -100,13 +101,18 @@ def pod_state(pod: dict, restart_marker=None) -> dict:
 class VaultWebUI:
     """Web UI server for Vault secret management."""
 
-    def __init__(self, vault_server):
+    def __init__(self, vault_server, host: Optional[str] = None, port: Optional[int] = None,
+                 timeout_minutes: Optional[int] = None, locked_env: Optional[str] = None):
         """
         Initialize the Web UI server.
 
         Args:
             vault_server: VaultMCPServer instance
+            host / port / timeout_minutes: override WEB_UI_HOST / WEB_UI_PORT / WEB_UI_TIMEOUT_MINUTES
+                (port 0 = random; timeout 0 = never shut down when idle)
+            locked_env: serve only this environment (standalone mode used by Infra Desktop)
         """
+        self.locked_env = locked_env
         self.vault_server = vault_server
         # Get the directory where this file is located
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -115,13 +121,16 @@ class VaultWebUI:
         CORS(self.app)  # Enable CORS for API requests
         
         self.is_running = False
-        self.host = os.getenv('WEB_UI_HOST', '0.0.0.0')
+        self.host = host if host is not None else os.getenv('WEB_UI_HOST', '0.0.0.0')
         # env_name -> (expiry_ts, aws creds dict) for kubectl's EKS exec plugin
         self._k8s_aws_creds = {}
 
         # 端口配置：优先使用环境变量，否则使用随机端口
         env_port = os.getenv('WEB_UI_PORT')
-        if env_port:
+        if port is not None:
+            self.port = port or None
+            self._use_random_port = not port
+        elif env_port:
             self.port = int(env_port)
             self._use_random_port = False
         else:
@@ -130,7 +139,8 @@ class VaultWebUI:
         
         # Timeout management
         self.last_access_time = time.time()
-        timeout_minutes = int(os.getenv('WEB_UI_TIMEOUT_MINUTES', '480'))
+        if timeout_minutes is None:
+            timeout_minutes = int(os.getenv('WEB_UI_TIMEOUT_MINUTES', '480'))
         self.timeout_seconds = timeout_minutes * 60
         self.check_interval_seconds = int(os.getenv('WEB_UI_CHECK_INTERVAL_SECONDS', '1'))
         self.server = None
@@ -1059,14 +1069,30 @@ class VaultWebUI:
             """Get current environment info."""
             return jsonify({
                 'success': True,
-                'environment': self.vault_server.current_env,
+                'environment': self.locked_env or self.vault_server.current_env,
                 'authenticated': self.vault_server._ensure_authenticated(),
-                'available_environments': list(self.vault_server.environments.keys())
+                'available_environments': [self.locked_env] if self.locked_env else list(self.vault_server.environments.keys()),
+                'locked': bool(self.locked_env),
             })
+
+        @self.app.route('/api/health', methods=['GET'])
+        def get_health():
+            """Vault sign-in state for Infra Desktop. Never includes tokens or secrets."""
+            body = {'environment': self.locked_env or self.vault_server.current_env}
+            try:
+                body['vault'] = 'authenticated' if self.vault_server._ensure_authenticated() else 'unauthenticated'
+            except Exception as e:  # report, don't fail the health check
+                body.update(vault='error', message=str(e))
+            expires_at = getattr(self.vault_server, 'vault_token_expires_at', None)
+            if body['vault'] == 'authenticated' and expires_at:
+                body['token_ttl'] = max(0, int(expires_at - time.time()))
+            return jsonify(body)
         
         @self.app.route('/api/timeout', methods=['GET'])
         def get_timeout():
             """Get remaining time until auto-shutdown."""
+            if not self.timeout_seconds:
+                return jsonify({'success': True, 'disabled': True, 'remaining_seconds': None, 'timeout_seconds': 0})
             if not self.is_running:
                 return jsonify({
                     'success': True,
@@ -1089,6 +1115,11 @@ class VaultWebUI:
             try:
                 data = request.get_json()
                 environment = data.get('environment', 'dev')
+                if self.locked_env and environment != self.locked_env:
+                    return jsonify({
+                        'success': False,
+                        'error': f"This Web UI only serves {self.locked_env.upper()}",
+                    }), 400
                 
                 # Call synchronous login method with from_web_ui=True
                 # This enables GUI-based MFA prompts on Windows/macOS
@@ -1127,8 +1158,8 @@ class VaultWebUI:
                 # Shutdown event was set, exit the loop
                 break
             
-            # Check if timeout has been reached
-            if self.is_running and self.server:
+            # Check if timeout has been reached (0 = never)
+            if self.timeout_seconds and self.is_running and self.server:
                 elapsed = time.time() - self.last_access_time
                 if elapsed > self.timeout_seconds:
                     logger.info(f"Web UI timeout reached ({elapsed:.0f}s > {self.timeout_seconds}s), shutting down...")
@@ -1202,9 +1233,85 @@ class VaultWebUI:
         
         logger.info(f"✓ Web UI started at http://{self.host}:{self.port} (timeout: {self.timeout_seconds//60} minutes)")
     
+    def refresh_login_if_needed(self) -> None:
+        """Ambient credentials only: log in again before the Vault token runs out."""
+        if not (self.locked_env and ambient_credentials_enabled()):
+            return
+        expires_at = getattr(self.vault_server, 'vault_token_expires_at', None)
+        if expires_at is not None and expires_at - time.time() <= REFRESH_BEFORE_SECONDS:
+            result = json.loads(self.vault_server.login_sync(self.locked_env, from_web_ui=True))
+            if not result.get('success'):
+                logger.warning(f"Vault re-login failed: {result.get('message')}")
+
     def open_browser(self):
         """Open the Web UI in the default browser."""
         url = f"http://localhost:{self.port}"
         webbrowser.open(url)
         logger.info(f"✓ Opened browser at {url}")
         return url
+
+
+# ---------------------------------------------------------------- standalone mode (Infra Desktop)
+
+STANDALONE_VERSION = "vault-mcp-web-ui standalone 1"
+REFRESH_BEFORE_SECONDS = 300
+REFRESH_CHECK_SECONDS = 60
+
+
+def _make_vault_server():
+    from vault_mcp.server import VaultMCPServer
+
+    return VaultMCPServer()
+
+
+def main(argv: Optional[list] = None) -> int:
+    """Run only the web UI, locked to one environment: python -m vault_mcp.web_ui --env dev --port 9291"""
+    parser = argparse.ArgumentParser(prog="python -m vault_mcp.web_ui")
+    parser.add_argument("--version", action="store_true", help="print the standalone capability line")
+    parser.add_argument("--env", choices=["dev", "sat", "prod"])
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--host", default="127.0.0.1")
+    args = parser.parse_args(argv)
+    if args.version:
+        print(STANDALONE_VERSION, flush=True)
+        return 0
+    if not args.env or not args.port:
+        parser.error("--env and --port are required")
+
+    ui = VaultWebUI(_make_vault_server(), host=args.host, port=args.port, timeout_minutes=0, locked_env=args.env)
+    try:
+        ui.start()
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr, flush=True)
+        return 2
+    print(f"VAULT_WEB_UI_READY http://{args.host}:{ui.port}", flush=True)
+
+    result = json.loads(ui.vault_server.login_sync(args.env, from_web_ui=True))
+    if result.get("success"):
+        logger.info(f"Signed in to {args.env.upper()} Vault")
+    else:
+        logger.warning(f"Vault sign-in failed: {result.get('message')}")  # /api/health reports it
+
+    stop = threading.Event()
+
+    def refresh_loop():
+        while not stop.wait(REFRESH_CHECK_SECONDS):
+            try:
+                ui.refresh_login_if_needed()
+            except Exception as e:
+                logger.warning(f"Vault token refresh failed: {e}")
+
+    threading.Thread(target=refresh_loop, daemon=True).start()
+    try:
+        while not stop.wait(3600):
+            pass
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop.set()
+        ui.stop()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
