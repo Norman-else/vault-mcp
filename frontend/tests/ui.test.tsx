@@ -414,11 +414,44 @@ describe("migrated UI regressions", () => {
     handler = (url, options) =>
       url.pathname === "/api/environment"
         ? { environment: "dev", authenticated: false, available_environments: ["dev"], locked: true }
-        : original(url, options);
+        : url.pathname === "/api/login"
+          ? { success: false, message: "denied" }
+          : original(url, options);
     render(<Session />);
+    // automatic sign-in failed: the button is there to retry
     await screen.findByRole("button", { name: "Log in" });
     expect(screen.queryByRole("combobox", { name: "Environment" })).toBeNull();
     expect(screen.queryByText("DEV")).toBeNull();
+  });
+  it("signs in automatically when locked", async () => {
+    let signedIn = false;
+    const original = handler;
+    handler = (url, options) => {
+      if (url.pathname === "/api/environment")
+        return { environment: "dev", authenticated: signedIn, available_environments: ["dev"], locked: true };
+      if (url.pathname === "/api/login") {
+        signedIn = true;
+        return { success: true, environment: "dev" };
+      }
+      return original(url, options);
+    };
+    render(<Session />);
+    await screen.findByRole("button", { name: "alpha" });
+    const logins = calls.filter((c) => c.path === "/api/login");
+    expect(logins).toHaveLength(1);
+    expect(logins[0].body).toEqual({ environment: "dev" });
+  });
+  it("says it is signing in, not asking for MFA, when locked", async () => {
+    const original = handler;
+    handler = (url, options) =>
+      url.pathname === "/api/environment"
+        ? { environment: "dev", authenticated: false, available_environments: ["dev"], locked: true }
+        : url.pathname === "/api/login"
+          ? new Promise(() => {})
+          : original(url, options);
+    render(<Session />);
+    await screen.findByText(/Signing in/);
+    expect(screen.queryByText(/Complete MFA/)).toBeNull();
   });
   it("keeps the environment selector when not locked", async () => {
     render(<Session />);

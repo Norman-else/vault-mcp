@@ -13,6 +13,8 @@ export function Session() {
   const [refresh, setRefresh] = useState(0);
   const [epoch, setEpoch] = useState(0);
   const pending = useRef(false);
+  // Locked (Infra Desktop): there is nothing to choose, so sign in without waiting for a click — once per session.
+  const autoLogin = useRef(false);
   useEffect(() => {
     try {
       document.documentElement.dataset.theme =
@@ -39,6 +41,7 @@ export function Session() {
   }, [refresh]);
   useEffect(() => {
     const expired = () => {
+      autoLogin.current = false;
       setEnvironment((current) =>
         current ? { ...current, authenticated: false } : null,
       );
@@ -78,6 +81,11 @@ export function Session() {
       pending.current = false;
     }
   }
+  useEffect(() => {
+    if (!environment?.locked || environment.authenticated || busy || autoLogin.current) return;
+    autoLogin.current = true;
+    void login(environment.environment);
+  });
   if (environment?.authenticated && !busy)
     return (
       <>
@@ -102,7 +110,9 @@ export function Session() {
         <h1>Vault Manager</h1>
         <p className="muted">Authenticate with AWS IAM to manage Vault.</p>
         {error && <ErrorBanner message={error} />}
-        {busy ? (
+        {busy && environment?.locked ? (
+          <Loading text="Signing in to Vault…" />
+        ) : busy ? (
           <>
             <Loading text={`Connecting to ${target.toUpperCase()}…`} />
             <p>
