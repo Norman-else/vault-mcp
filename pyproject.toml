@@ -1,6 +1,6 @@
 [project]
 name = "vault-mcp"
-version = "0.4.3"
+version = "0.4.4"
 description = "MCP server for accessing HashiCorp Vault in AWS environments"
 readme = "README.md"
 requires-python = ">=3.10"
