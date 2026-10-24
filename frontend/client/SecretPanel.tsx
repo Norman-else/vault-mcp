@@ -627,18 +627,20 @@ function CompareModal({
                         <strong>
                           {name(env)} vs {name(base)}
                         </strong>
-                        <span className="compare-pill different">
-                          {count("different")} different
-                        </span>
-                        <span className="compare-pill missing">
-                          {count("missing")} missing in {name(env)}
-                        </span>
-                        <span className="compare-pill only">
-                          {count("only")} only in {name(env)}
-                        </span>
-                        <span className="compare-pill same">
-                          {count("same")} same
-                        </span>
+                        {(
+                          [
+                            ["different", "different"],
+                            ["missing", `missing in ${name(env)}`],
+                            ["only", `only in ${name(env)}`],
+                            ["same", "same"],
+                          ] as const
+                        )
+                          .filter(([kind]) => count(kind) > 0)
+                          .map(([kind, text]) => (
+                            <span key={kind} className={`compare-pill ${kind}`}>
+                              {count(kind)} {text}
+                            </span>
+                          ))}
                       </div>
                     );
                   })}

@@ -2977,16 +2977,21 @@ progress {
 .compare-unavailable { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .compare-summary { display: grid; gap: 8px; }
 .compare-summary > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.compare-summary strong { min-width: 140px; font-family: var(--font-mono); font-size: 12px; }
+.compare-summary strong { margin-right: 4px; font-family: var(--font-mono); font-size: 12px; }
 .compare-filter { justify-self: start; display: inline-flex; align-items: center; gap: 8px; font: 13px/1.5 var(--font-sans, inherit); color: var(--secondary); text-transform: none; letter-spacing: 0; cursor: pointer; }
 .compare-filter input { width: auto; height: auto; margin: 0; }
 .modal-editor:has(.compare-body) { height: auto; max-height: 85dvh; }
 .compare-table th { white-space: nowrap; }
-.compare-table td:first-child { width: 28%; }
-.compare-table td { vertical-align: top; }
-.compare-value { display: grid; justify-items: start; gap: 6px; min-width: 0; }
-.compare-value > .masked-value { width: 100%; }
-.compare-value code.revealed { overflow-wrap: anywhere; white-space: pre-wrap; }
+.compare-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; }
+.compare-table td:first-child { width: 30%; }
+/* One line per cell: label, value, eye/copy. */
+.compare-value { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.compare-value > .compare-pill { flex-shrink: 0; min-width: 88px; text-align: center; }
+.compare-value > .masked-value { flex: 1 1 auto; justify-content: flex-start; gap: 4px; }
+.compare-value .masked-value code { flex: 0 1 auto; font-size: 13px; }
+.compare-value .masked-value .row-actions { opacity: 0.7; }
+.compare-table tr:hover .compare-value .masked-value .row-actions { opacity: 1; }
+.compare-body > p.muted:last-child { font-size: 12px; }
 .compare-table .key-name { overflow-wrap: anywhere; }
 .compare-cell { font: 12px/1.6 var(--font-mono); color: var(--muted); }
 .compare-pill { --pill: var(--muted); display: inline-block; padding: 1px 8px; border: 1px solid var(--pill); color: var(--pill); font: 600 11px/1.6 var(--font-mono); white-space: nowrap; }
