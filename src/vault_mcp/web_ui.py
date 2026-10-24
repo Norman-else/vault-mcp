@@ -42,13 +42,14 @@ def parse_peers(value: Optional[str]) -> dict:
 
 
 def secret_fingerprints(client, path: str, mount_point: str) -> dict:
-    """One environment's entry for cross-environment compare: key -> value hash, never values."""
+    """One environment's entry for cross-environment compare: key -> value hash, plus the values
+    (shown masked in the UI, like the secret page)."""
     if not client:
         return {'status': 'signed_out'}
     try:
         secret = client.secrets.kv.v2.read_secret_version(path=path, mount_point=mount_point)
         data = secret['data']['data'] or {}
-        return {'status': 'ok', 'keys': {
+        return {'status': 'ok', 'values': data, 'keys': {
             key: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()[:16]
             for key, value in data.items()}}
     except Exception as e:
@@ -77,7 +78,7 @@ def peer_fingerprints(base_url: str, path: str, mount_point: str) -> dict:
         return {'status': 'error', 'error': body.get('error') or f'HTTP {e.code}'}
     except (urllib.error.URLError, OSError):
         return {'status': 'not_running'}
-    entry = {k: body[k] for k in ('status', 'keys', 'error') if k in body}
+    entry = {k: body[k] for k in ('status', 'keys', 'values', 'error') if k in body}
     return entry if entry.get('status') else {'status': 'error', 'error': 'Invalid peer response'}
 
 
@@ -697,7 +698,7 @@ class VaultWebUI:
 
         @self.app.route('/api/secrets/fingerprints', methods=['GET'])
         def secret_fingerprints_route():
-            """This environment's key fingerprints, for a peer Web UI's compare."""
+            """This environment's key fingerprints and values, for a peer Web UI's compare."""
             path = request.args.get('path')
             if not path:
                 return jsonify({'success': False, 'error': 'Path is required'}), 400
@@ -712,7 +713,7 @@ class VaultWebUI:
 
             Reads environments signed in during this session (signing in to another one
             switches the kubectl context) and asks peer Web UIs (VAULT_MCP_PEERS) for the
-            rest. Values never leave the server.
+            rest. Keys are compared by fingerprint; values are returned for masked display.
             """
             path = request.args.get('path')
             mount_point = request.args.get('mount_point', 'secret')

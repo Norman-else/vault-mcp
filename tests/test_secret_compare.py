@@ -42,7 +42,7 @@ class TestSecretCompare(unittest.TestCase):
         self.assertIn('c', envs['sat']['keys'])
         self.assertEqual(envs['prod']['status'], 'missing')
         self.assertEqual(envs['local']['status'], 'signed_out')
-        self.assertNotIn('x', str(body))
+        self.assertEqual(envs['dev']['values']['a'], 'x')
 
     def test_permission_errors_are_not_reported_as_missing(self):
         server = SimpleNamespace(
@@ -86,6 +86,7 @@ class TestPeerCompare(unittest.TestCase):
         self.assertEqual([item['environment'] for item in body['environments']], ['dev', 'sat', 'prod'])
         self.assertEqual(envs['dev']['keys']['a'], envs['sat']['keys']['a'])
         self.assertIn('b', envs['sat']['keys'])
+        self.assertEqual(envs['sat']['values'], {'a': 'x', 'b': 2})
         self.assertEqual(envs['prod']['status'], 'not_running')
 
     def test_locked_ui_without_peers_cannot_compare(self):

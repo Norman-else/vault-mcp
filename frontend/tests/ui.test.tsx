@@ -449,8 +449,8 @@ describe("migrated UI regressions", () => {
         ? {
             current: "dev",
             environments: [
-              { environment: "dev", status: "ok", keys: { a: "h1", b: "h2" } },
-              { environment: "sat", status: "ok", keys: { a: "h1", b: "h3", c: "h4" } },
+              { environment: "dev", status: "ok", keys: { a: "h1", b: "h2" }, values: { a: "same", b: "dev-b" } },
+              { environment: "sat", status: "ok", keys: { a: "h1", b: "h3", c: "h4" }, values: { a: "same", b: "sat-b", c: 4 } },
               { environment: "prod", status: "not_running" },
             ],
           }
@@ -473,11 +473,21 @@ describe("migrated UI regressions", () => {
     expect(within(dialog).getByText("1 different")).toBeTruthy();
     expect(within(dialog).getByText("1 only in SAT")).toBeTruthy();
     // identical keys are hidden until "Differences only" is cleared
+    const hidden = "••••••••••••";
     let rows = within(dialog).getAllByRole("row").map((row) => row.textContent);
-    expect(rows).toEqual(["KEYDEV · baselineSAT", "bPresentDifferent", "cMissingOnly here"]);
+    expect(rows).toEqual([
+      "KEYDEV · baselineSAT",
+      `b${hidden}Different${hidden}`,
+      `cMissingOnly here${hidden}`,
+    ]);
+    // values stay hidden until revealed, one cell at a time
+    expect(within(dialog).queryByText("sat-b")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Reveal b in SAT" }));
+    expect(within(dialog).getByText("sat-b")).toBeTruthy();
+    expect(within(dialog).queryByText("dev-b")).toBeNull();
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Differences only/ }));
     rows = within(dialog).getAllByRole("row").map((row) => row.textContent);
-    expect(rows[1]).toBe("aPresentSame");
+    expect(rows[1]).toBe(`a${hidden}Same${hidden}`);
   });
   it("offers environment compare only when the server can compare", async () => {
     render(

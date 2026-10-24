@@ -502,6 +502,7 @@ type EnvironmentSecret = {
   environment: string;
   status: "ok" | "missing" | "signed_out" | "not_running" | "error";
   keys?: Record<string, string>;
+  values?: SecretData;
   error?: string;
 };
 
@@ -517,10 +518,12 @@ const compareLabel: Record<CompareCell, string> = {
 function CompareModal({
   path,
   mount,
+  copy,
   onClose,
 }: {
   path: string;
   mount: string;
+  copy: (value: string) => void;
   onClose: () => void;
 }) {
   const [result, setResult] = useState<{
@@ -565,6 +568,14 @@ function CompareModal({
     !base?.keys?.[key] || others.some((env) => compare(env, key) !== "same");
   const rows = differencesOnly ? keys.filter(differs) : keys;
   const name = (env: EnvironmentSecret) => env.environment.toUpperCase();
+  const value = (env: EnvironmentSecret, key: string) =>
+    env.keys?.[key] && env.values && Object.hasOwn(env.values, key) ? (
+      <MaskedValue
+        value={displayValue(env.values[key])}
+        label={`${key} in ${name(env)}`}
+        copy={copy}
+      />
+    ) : null;
   const statusText = {
     missing: "No secret",
     signed_out: "Not signed in",
@@ -661,23 +672,27 @@ function CompareModal({
                             <code className="key-name">{key}</code>
                           </td>
                           <td>
-                            {base.keys?.[key] ? (
-                              <span className="compare-cell">Present</span>
-                            ) : (
-                              <span className="compare-pill missing">
-                                Missing
-                              </span>
-                            )}
+                            <div className="compare-value">
+                              {!base.keys?.[key] && (
+                                <span className="compare-pill missing">
+                                  Missing
+                                </span>
+                              )}
+                              {value(base, key)}
+                            </div>
                           </td>
                           {others.map((env) => {
                             const cell = compare(env, key);
                             return (
                               <td key={env.environment}>
-                                {cell !== "absent" && (
-                                  <span className={`compare-pill ${cell}`}>
-                                    {compareLabel[cell]}
-                                  </span>
-                                )}
+                                <div className="compare-value">
+                                  {cell !== "absent" && (
+                                    <span className={`compare-pill ${cell}`}>
+                                      {compareLabel[cell]}
+                                    </span>
+                                  )}
+                                  {value(env, key)}
+                                </div>
                               </td>
                             );
                           })}
@@ -692,7 +707,7 @@ function CompareModal({
                   </p>
                 )}
                 <p className="muted">
-                  Values are compared by fingerprint and never shown. Different
+                  Values are hidden until you click the eye icon. Different
                   values between environments are often expected (each
                   environment has its own credentials).
                 </p>
@@ -1120,6 +1135,7 @@ export function SecretPanel({
         <CompareModal
           path={path}
           mount={mount}
+          copy={copy}
           onClose={() => setComparingEnvironments(false)}
         />
       )}

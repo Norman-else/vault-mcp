@@ -2982,7 +2982,11 @@ progress {
 .compare-filter input { width: auto; height: auto; margin: 0; }
 .modal-editor:has(.compare-body) { height: auto; max-height: 85dvh; }
 .compare-table th { white-space: nowrap; }
-.compare-table td:first-child { width: 40%; }
+.compare-table td:first-child { width: 28%; }
+.compare-table td { vertical-align: top; }
+.compare-value { display: grid; justify-items: start; gap: 6px; min-width: 0; }
+.compare-value > .masked-value { width: 100%; }
+.compare-value code.revealed { overflow-wrap: anywhere; white-space: pre-wrap; }
 .compare-table .key-name { overflow-wrap: anywhere; }
 .compare-cell { font: 12px/1.6 var(--font-mono); color: var(--muted); }
 .compare-pill { --pill: var(--muted); display: inline-block; padding: 1px 8px; border: 1px solid var(--pill); color: var(--pill); font: 600 11px/1.6 var(--font-mono); white-space: nowrap; }
