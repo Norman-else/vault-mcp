@@ -18,6 +18,7 @@ from urllib.parse import urljoin, quote
 from datetime import datetime
 
 import hvac
+import requests
 import boto3
 try:
     import certifi
@@ -686,6 +687,10 @@ PY
         transport = os.getenv("VAULT_TRANSPORT", "auto").lower()
         if transport in {"curl", "hvac"}:
             return transport
+        # Infra Desktop: hvac keeps the TLS connection alive. curl starts a new process and
+        # handshake per request, which costs several seconds each over the VPN.
+        if ambient_credentials_enabled():
+            return "hvac"
         if shutil.which("curl"):
             return "curl"
         return "hvac"
@@ -697,6 +702,9 @@ PY
 
         client_kwargs = {"url": vault_addr, "token": token}
         proxies = self._get_proxy_config()
+        # Explicit proxies would override NO_PROXY in requests, so apply it here.
+        if proxies and requests.utils.should_bypass_proxies(vault_addr, no_proxy=None):
+            proxies = None
         if proxies:
             client_kwargs["proxies"] = proxies
 

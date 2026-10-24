@@ -610,6 +610,14 @@ function CompareModal({
                 ))}
               </p>
             )}
+            {unavailable
+              .filter((env) => env.status === "error")
+              .map((env) => (
+                <ErrorBanner
+                  key={env.environment}
+                  message={`${name(env)} could not be read: ${env.error || "unknown error"}`}
+                />
+              ))}
             {base && others.length === 0 && (
               <p className="notice">
                 Only {name(base)} could be read — start or sign in to another

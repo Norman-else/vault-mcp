@@ -452,6 +452,7 @@ describe("migrated UI regressions", () => {
               { environment: "dev", status: "ok", keys: { a: "h1", b: "h2" }, values: { a: "same", b: "dev-b" } },
               { environment: "sat", status: "ok", keys: { a: "h1", b: "h3", c: "h4" }, values: { a: "same", b: "sat-b", c: 4 } },
               { environment: "prod", status: "not_running" },
+              { environment: "qa", status: "error", error: "permission denied" },
             ],
           }
         : original(url, options);
@@ -470,6 +471,7 @@ describe("migrated UI regressions", () => {
     );
     const dialog = await screen.findByRole("dialog");
     await within(dialog).findByText("PROD · Not running");
+    expect(within(dialog).getByText("QA could not be read: permission denied")).toBeTruthy();
     expect(within(dialog).getByText("1 different")).toBeTruthy();
     expect(within(dialog).getByText("1 only in SAT")).toBeTruthy();
     // identical keys are hidden until "Differences only" is cleared
