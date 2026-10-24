@@ -132,6 +132,7 @@ class VaultMCPServer:
         self._inherit_network_settings()
         self.vault_client: Optional[hvac.Client] = None
         self.current_env = None  # Currently logged in environment
+        self.env_clients = {}  # environment -> Vault client signed in this session (cross-env compare)
         self.auth_check_ttl_seconds = float(
             os.getenv("VAULT_AUTH_CHECK_TTL_SECONDS", "5")
         )
@@ -1634,6 +1635,8 @@ PY
                 token = env_config["token"]
                 self._init_vault_client(token, vault_addr)
                 self.current_env = environment
+                if self.vault_client:
+                    self.env_clients[environment] = self.vault_client
                 return json.dumps(
                     {
                         "success": True,
@@ -1654,6 +1657,8 @@ PY
         error = self._aws_login(env_config, from_web_ui=from_web_ui)
         if error is None:
             self.current_env = environment
+            if self.vault_client:
+                self.env_clients[environment] = self.vault_client
             return json.dumps(
                 {
                     "success": True,
@@ -3058,6 +3063,7 @@ PY
             if self.vault_client:
                 logger.info("Clearing Vault client...")
                 self.vault_client = None
+            self.env_clients.clear()
             self._invalidate_auth_check_cache()
 
             messages = []

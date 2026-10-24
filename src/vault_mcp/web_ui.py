@@ -1,6 +1,7 @@
 """Vault Web UI Server - Interactive web interface for managing Vault secrets."""
 
 import argparse
+import hashlib
 import os
 import re
 import sys
@@ -638,6 +639,43 @@ class VaultWebUI:
                     'error': str(e)
                 }), 500
 
+        @self.app.route('/api/secrets/compare', methods=['GET'])
+        def compare_secret_across_environments():
+            """Key presence and value fingerprints for one path in every environment.
+
+            Only environments signed in during this session are read (signing in to
+            another one switches the kubectl context). Values never leave the server.
+            """
+            path = request.args.get('path')
+            mount_point = request.args.get('mount_point', 'secret')
+            if not path:
+                return jsonify({'success': False, 'error': 'Path is required'}), 400
+            if not self.vault_server._ensure_authenticated():
+                return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            current = self.vault_server.current_env
+            names = [self.locked_env] if self.locked_env else list(self.vault_server.environments.keys())
+            clients = dict(getattr(self.vault_server, 'env_clients', {}) or {})
+            clients[current] = self.vault_server.vault_client
+            results = []
+            for env in names:
+                client = clients.get(env)
+                if not client:
+                    results.append({'environment': env, 'status': 'signed_out'})
+                    continue
+                try:
+                    secret = client.secrets.kv.v2.read_secret_version(
+                        path=path, mount_point=mount_point)
+                    data = secret['data']['data'] or {}
+                    results.append({'environment': env, 'status': 'ok', 'keys': {
+                        key: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()[:16]
+                        for key, value in data.items()}})
+                except Exception as e:
+                    # hvac raises InvalidPath; the curl transport raises with Vault's empty 404 body
+                    missing = type(e).__name__ == 'InvalidPath' or str(e).replace(' ', '') == '{"errors":[]}'
+                    results.append({'environment': env, 'status': 'missing' if missing else 'error',
+                                    **({} if missing else {'error': str(e)})})
+            return jsonify({'success': True, 'current': current, 'environments': results})
+
         @self.app.route('/api/secrets/search', methods=['GET'])
         def search_secrets():
             """Search secrets by path and key name."""
@@ -1030,6 +1068,36 @@ class VaultWebUI:
                 return jsonify({'success': False, 'error': err}), 500
             logger.info(f"Restarted deployment {namespace}/{name} in env {self.vault_server.current_env}")
             return jsonify({'success': True, 'message': out.strip()})
+
+        @self.app.route('/api/k8s/deployments/rollback', methods=['POST'])
+        def rollback_k8s_deployment():
+            """Roll a deployment back to its previous ReplicaSet (kubectl rollout undo)."""
+            data = request.get_json() or {}
+            namespace, name = data.get('namespace'), data.get('name')
+            if not _valid_deploy_params(namespace, name):
+                return jsonify({'success': False, 'error': 'Invalid namespace or deployment name'}), 400
+            ok, out, err = _kubectl(
+                ['rollout', 'undo', f'deployment/{name}', '-n', namespace], timeout=30
+            )
+            if not ok:
+                return jsonify({'success': False, 'error': err}), 500
+            logger.info(f"Rolled back deployment {namespace}/{name} in env {self.vault_server.current_env}")
+            return jsonify({'success': True, 'message': out.strip()})
+
+        @self.app.route('/api/k8s/pods/logs', methods=['GET'])
+        def k8s_pod_logs():
+            """Last 200 log lines of every container in a pod."""
+            namespace = request.args.get('namespace', '')
+            pod = request.args.get('pod', '')
+            if not _valid_deploy_params(namespace, pod):
+                return jsonify({'success': False, 'error': 'Invalid namespace or pod name'}), 400
+            args = ['logs', pod, '-n', namespace, '--tail=200', '--all-containers', '--prefix']
+            if request.args.get('previous') == '1':
+                args.append('--previous')
+            ok, out, err = _kubectl(args, timeout=20)
+            if not ok:
+                return jsonify({'success': False, 'error': err}), 500
+            return jsonify({'success': True, 'logs': out})
 
         @self.app.route('/api/k8s/deployments/status', methods=['GET'])
         def k8s_deployment_status():

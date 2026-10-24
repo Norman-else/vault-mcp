@@ -407,6 +407,10 @@ export default function Workspace({
                 key={`kv:${mount}:${selected}`}
                 path={selected}
                 mount={mount}
+                canCompare={
+                  !environment.locked &&
+                  environment.available_environments.length > 1
+                }
                 copy={(value) => void copy(value)}
                 onChanged={() => {
                   setListRefresh((value) => value + 1);

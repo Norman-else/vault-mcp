@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { SecretResult, VersionInfo } from "../shared/types";
+import type { SecretData, SecretResult, VersionInfo } from "../shared/types";
 import { CodeEditor } from "./CodeEditor";
 import { Select } from "./Select";
 import { api, errorMessage, isAborted, post } from "./api";
@@ -12,11 +12,13 @@ import {
   Modal,
 } from "./components";
 import {
+  diffSecret,
   displayValue,
   formatTime,
   parseSecretJson,
   parseTypedValue,
   valueType,
+  type SecretChange,
   type ValueType,
 } from "./utils";
 
@@ -24,8 +26,45 @@ type EditMode =
   | { kind: "json" }
   | { kind: "key"; key?: string }
   | { kind: "delete-key"; key: string }
-  | { kind: "delete-secret" };
+  | { kind: "delete-secret" }
+  | { kind: "restore"; data: SecretData; version: number };
 type VersionsResponse = { current_version: number; versions: VersionInfo[] };
+
+export function SecretDiff({
+  changes,
+  copy,
+}: {
+  changes: SecretChange[];
+  copy: (value: string) => void;
+}) {
+  if (!changes.length) return <p className="muted">No differences.</p>;
+  return (
+    <div className="secret-diff" aria-label="Changes">
+      {changes.map((change) => (
+        <div className={`diff-row ${change.kind}`} key={change.key}>
+          <span className="diff-kind">{change.kind}</span>
+          <code className="key-name">{change.key}</code>
+          <div className="diff-values">
+            {change.kind !== "added" && (
+              <MaskedValue
+                value={displayValue(change.before ?? null)}
+                label={`old value for ${change.key}`}
+                copy={copy}
+              />
+            )}
+            {change.kind !== "removed" && (
+              <MaskedValue
+                value={displayValue(change.after ?? null)}
+                label={`new value for ${change.key}`}
+                copy={copy}
+              />
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function JsonEditor({
   value,
@@ -178,6 +217,7 @@ function EditModal({
   mode,
   secret,
   mount,
+  copy,
   onClose,
   onSaved,
   onDeleted,
@@ -185,6 +225,7 @@ function EditModal({
   mode: EditMode;
   secret: SecretResult;
   mount: string;
+  copy: (value: string) => void;
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
@@ -200,6 +241,10 @@ function EditModal({
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Saves show the key-level diff first; a second submit writes it.
+  const [review, setReview] = useState<SecretChange[] | null>(
+    mode.kind === "restore" ? diffSecret(secret.data, mode.data) : null,
+  );
   const controller = useRef(new AbortController());
   useEffect(() => {
     const active = new AbortController();
@@ -207,24 +252,28 @@ function EditModal({
     return () => active.abort();
   }, []);
   const title =
-    mode.kind === "json"
-      ? "Edit JSON"
-      : mode.kind === "delete-secret"
-        ? "Delete Entire Secret"
-        : mode.kind === "delete-key"
-          ? "Delete Key"
-          : originalKey !== undefined
-            ? "Edit Key"
-            : "Add Key";
+    mode.kind === "restore"
+      ? `Restore v${mode.version}`
+      : mode.kind === "json"
+        ? "Edit JSON"
+        : mode.kind === "delete-secret"
+          ? "Delete Entire Secret"
+          : mode.kind === "delete-key"
+            ? "Delete Key"
+            : originalKey !== undefined
+              ? "Edit Key"
+              : "Add Key";
   async function save(event: FormEvent) {
     event.preventDefault();
     setError("");
     try {
       let endpoint: string;
       let body: object;
-      if (mode.kind === "json") {
+      let next: SecretData | undefined;
+      if (mode.kind === "json" || mode.kind === "restore") {
         endpoint = "update-json";
-        body = { path: secret.path, data: parseSecretJson(json) };
+        next = mode.kind === "json" ? parseSecretJson(json) : mode.data;
+        body = { path: secret.path, data: next };
       } else if (mode.kind === "key") {
         if (!key.trim()) throw new Error("Enter a key name.");
         if (originalKey === undefined && Object.hasOwn(secret.data, key))
@@ -232,11 +281,9 @@ function EditModal({
             "This key already exists. Edit the existing key instead.",
           );
         endpoint = "update";
-        body = {
-          path: secret.path,
-          key,
-          value: parseTypedValue(value, type),
-        };
+        const parsed = parseTypedValue(value, type);
+        next = { ...secret.data, [key]: parsed };
+        body = { path: secret.path, key, value: parsed };
       } else if (mode.kind === "delete-key") {
         endpoint = "delete-key";
         body = { path: secret.path, key: mode.key };
@@ -245,6 +292,12 @@ function EditModal({
           throw new Error("Type the exact secret path to confirm deletion.");
         endpoint = "delete";
         body = { path: secret.path, confirmation };
+      }
+      if (next && !review) {
+        const changes = diffSecret(secret.data, next);
+        if (!changes.length) throw new Error("No changes to save.");
+        setReview(changes);
+        return;
       }
       setBusy(true);
       await post(
@@ -283,7 +336,22 @@ function EditModal({
                 : "KV v1"}
             </span>
           </p>
-          {mode.kind === "json" && (
+          {review && (
+            <div className="field">
+              <label>
+                {mode.kind === "restore"
+                  ? `Latest → v${mode.version}`
+                  : "Review changes"}
+              </label>
+              <SecretDiff changes={review} copy={copy} />
+              {review.length > 0 && (
+                <small>
+                  Saving creates a new version. Older versions stay in history.
+                </small>
+              )}
+            </div>
+          )}
+          {!review && mode.kind === "json" && (
             <JsonEditor
               value={json}
               onChange={setJson}
@@ -291,7 +359,7 @@ function EditModal({
               onError={setError}
             />
           )}
-          {mode.kind === "key" && (
+          {!review && mode.kind === "key" && (
             <>
               <div className="field">
                 <label htmlFor="key-name">Key name</label>
@@ -389,22 +457,40 @@ function EditModal({
           {error && <ErrorBanner message={error} />}
         </div>
         <div className="modal-actions">
-          <button
-            type="button"
-            className="button"
-            onClick={onClose}
-            disabled={busy}
-          >
-            Cancel
-          </button>
+          {review && mode.kind !== "restore" ? (
+            <button
+              type="button"
+              className="button"
+              onClick={() => setReview(null)}
+              disabled={busy}
+            >
+              Back to Edit
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button"
+              onClick={onClose}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+          )}
           <button
             className={`button ${destructive ? "danger-fill" : "primary"}`}
             disabled={
               busy ||
-              (mode.kind === "delete-secret" && confirmation !== secret.path)
+              (mode.kind === "delete-secret" && confirmation !== secret.path) ||
+              review?.length === 0
             }
           >
-            {busy ? "Saving…" : destructive ? title : "Save Changes"}
+            {busy
+              ? "Saving…"
+              : destructive || mode.kind === "restore"
+                ? title
+                : review
+                  ? "Confirm Save"
+                  : "Save Changes"}
           </button>
         </div>
       </form>
@@ -412,15 +498,154 @@ function EditModal({
   );
 }
 
+type EnvironmentSecret = {
+  environment: string;
+  status: "ok" | "missing" | "signed_out" | "error";
+  keys?: Record<string, string>;
+  error?: string;
+};
+
+function CompareModal({
+  path,
+  mount,
+  onClose,
+}: {
+  path: string;
+  mount: string;
+  onClose: () => void;
+}) {
+  const [result, setResult] = useState<{
+    current: string;
+    environments: EnvironmentSecret[];
+  } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    api<{ current: string; environments: EnvironmentSecret[] }>(
+      `/api/secrets/compare?path=${encodeURIComponent(path)}&mount_point=${encodeURIComponent(mount)}`,
+      { signal: controller.signal },
+    )
+      .then((data) => {
+        if (!controller.signal.aborted) setResult(data);
+      })
+      .catch((error) => {
+        if (!isAborted(error)) setError(errorMessage(error));
+      });
+    return () => controller.abort();
+  }, [path, mount]);
+  const readable =
+    result?.environments.filter((env) => env.status === "ok") ?? [];
+  const keys = [
+    ...new Set(readable.flatMap((env) => Object.keys(env.keys ?? {}))),
+  ].sort();
+  const statusText = {
+    missing: "No secret",
+    signed_out: "Not signed in",
+    error: "Unreadable",
+    ok: "",
+  };
+  return (
+    <Modal title="Compare Environments" onClose={onClose} wide>
+      <p className="modal-context">
+        <Icon name="lock" />
+        <code>
+          {mount}/{path}
+        </code>
+      </p>
+      {error && <ErrorBanner message={error} />}
+      {!result && !error && <Loading text="Reading environments…" />}
+      {result && (
+        <>
+          <div className="secret-table-wrap">
+            <table className="secret-table compare-table">
+              <thead>
+                <tr>
+                  <th>KEY</th>
+                  {result.environments.map((env) => (
+                    <th key={env.environment} title={env.error}>
+                      {env.environment.toUpperCase()}
+                      {env.environment === result.current && " · current"}
+                      {env.status !== "ok" && (
+                        <span className="compare-status">
+                          {statusText[env.status]}
+                        </span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {keys.map((key) => {
+                  // Same letter = same value; values themselves never reach the browser.
+                  const groups = [
+                    ...new Set(
+                      readable
+                        .map((env) => env.keys?.[key])
+                        .filter((hash): hash is string => !!hash),
+                    ),
+                  ];
+                  const differs =
+                    groups.length > 1 ||
+                    readable.some((env) => !env.keys?.[key]);
+                  return (
+                    <tr key={key} className={differs ? "differs" : ""}>
+                      <td>
+                        <code className="key-name">{key}</code>
+                      </td>
+                      {result.environments.map((env) => {
+                        const hash = env.keys?.[key];
+                        return (
+                          <td key={env.environment} className="compare-cell">
+                            {env.status !== "ok" ? (
+                              ""
+                            ) : hash ? (
+                              groups.length > 1 ? (
+                                `value ${String.fromCharCode(65 + groups.indexOf(hash))}`
+                              ) : (
+                                "✓"
+                              )
+                            ) : (
+                              <span className="compare-missing">missing</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {!keys.length && (
+            <p className="muted">No readable data to compare.</p>
+          )}
+          <p className="muted">
+            ✓ same everywhere · value A/B: environments with the same letter
+            share a value. Environments you have not signed in to this session
+            are skipped — switch to them once to include them.
+          </p>
+        </>
+      )}
+      <div className="modal-actions">
+        <button className="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export function SecretPanel({
   path,
   mount,
+  canCompare = false,
   copy,
   onChanged,
   onDeleted,
 }: {
   path: string;
   mount: string;
+  canCompare?: boolean;
   copy: (value: string) => void;
   onChanged: () => void;
   onDeleted: () => void;
@@ -435,6 +660,28 @@ export function SecretPanel({
   const [mode, setMode] = useState<EditMode | null>(null);
   const [filter, setFilter] = useState("");
   const [showJson, setShowJson] = useState(false);
+  const [latest, setLatest] = useState<SecretResult | null>(null);
+  const [comparing, setComparing] = useState(false);
+  const [comparingEnvironments, setComparingEnvironments] = useState(false);
+  const historical =
+    selectedVersion !== undefined && selectedVersion !== currentVersion;
+  useEffect(() => {
+    setLatest(null);
+    setComparing(false);
+    if (!historical) return;
+    const controller = new AbortController();
+    api<SecretResult>(
+      `/api/secrets/get?path=${encodeURIComponent(path)}&mount_point=${encodeURIComponent(mount)}`,
+      { signal: controller.signal },
+    )
+      .then((data) => {
+        if (!controller.signal.aborted) setLatest(data);
+      })
+      .catch((error) => {
+        if (!isAborted(error)) setError(errorMessage(error));
+      });
+    return () => controller.abort();
+  }, [path, mount, historical, refresh]);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -475,8 +722,6 @@ export function SecretPanel({
   const version = versions.find(
     (item) => item.version === (selectedVersion ?? currentVersion),
   );
-  const historical =
-    selectedVersion !== undefined && selectedVersion !== currentVersion;
   const entries = Object.entries(secret?.data || {}).filter(([key]) =>
     key.toLowerCase().includes(filter.toLowerCase()),
   );
@@ -506,12 +751,22 @@ export function SecretPanel({
             {path}
           </p>
         </div>
-        <IconButton
-          icon="refresh"
-          label="Refresh secret"
-          onClick={() => setRefresh((value) => value + 1)}
-          disabled={loading}
-        />
+        <div className="row-actions">
+          {canCompare && (
+            <button
+              className="button small"
+              onClick={() => setComparingEnvironments(true)}
+            >
+              Compare Environments
+            </button>
+          )}
+          <IconButton
+            icon="refresh"
+            label="Refresh secret"
+            onClick={() => setRefresh((value) => value + 1)}
+            disabled={loading}
+          />
+        </div>
       </div>
       <div className="secret-toolbar">
         <div className="version-control">
@@ -539,7 +794,11 @@ export function SecretPanel({
                   description: formatTime(item.created_time),
                   badges: [
                     ...(item.version === currentVersion ? ["Latest"] : []),
-                    ...(item.destroyed ? ["Destroyed"] : item.deleted_time ? ["Deleted"] : []),
+                    ...(item.destroyed
+                      ? ["Destroyed"]
+                      : item.deleted_time
+                        ? ["Deleted"]
+                        : []),
                   ],
                 })),
             ]}
@@ -558,6 +817,43 @@ export function SecretPanel({
           >
             Return to latest
           </button>
+          <span className="notice-actions">
+            <button
+              className="button small"
+              onClick={() => setComparing((value) => !value)}
+              disabled={!latest || !secret}
+              aria-pressed={comparing}
+            >
+              {comparing ? "Hide Comparison" : "Compare with Latest"}
+            </button>
+            <button
+              className="button small primary"
+              onClick={() =>
+                secret &&
+                setMode({
+                  kind: "restore",
+                  data: secret.data,
+                  version: selectedVersion!,
+                })
+              }
+              disabled={!latest || !secret}
+            >
+              Restore This Version
+            </button>
+          </span>
+        </div>
+      )}
+      {comparing && latest && secret && (
+        <div className="card compare-card">
+          <div className="card-heading">
+            <h2>
+              v{selectedVersion} → Latest (v{currentVersion})
+            </h2>
+          </div>
+          <SecretDiff
+            changes={diffSecret(secret.data, latest.data)}
+            copy={copy}
+          />
         </div>
       )}
       {loading ? (
@@ -745,11 +1041,19 @@ export function SecretPanel({
           </>
         )
       )}
-      {mode && secret && (
+      {comparingEnvironments && (
+        <CompareModal
+          path={path}
+          mount={mount}
+          onClose={() => setComparingEnvironments(false)}
+        />
+      )}
+      {mode && secret && (mode.kind !== "restore" || latest) && (
         <EditModal
           mode={mode}
-          secret={secret}
+          secret={mode.kind === "restore" ? latest! : secret}
           mount={mount}
+          copy={copy}
           onClose={() => setMode(null)}
           onSaved={saved}
           onDeleted={onDeleted}

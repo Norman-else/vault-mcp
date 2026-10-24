@@ -38,6 +38,13 @@ beforeEach(() => {
   localStorage.clear();
   calls.length = 0;
   Element.prototype.scrollIntoView = vi.fn();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
   handler = (url) => {
     if (url.pathname === "/api/environment") return environment;
     if (url.pathname === "/api/timeout") return { remaining_seconds: 3600 };
@@ -359,6 +366,115 @@ describe("migrated UI regressions", () => {
       ),
     ).toBe(true);
   });
+  it("reviews key-level changes before saving", async () => {
+    render(
+      <SecretPanel
+        path="alpha"
+        mount="secret"
+        copy={vi.fn()}
+        onChanged={vi.fn()}
+        onDeleted={vi.fn()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit key" }));
+    fireEvent.change(screen.getByLabelText("Value"), {
+      target: { value: "changed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    const changes = await screen.findByLabelText("Changes");
+    expect(within(changes).getByText("changed")).toBeTruthy();
+    expect(calls.some((call) => call.path.startsWith("/api/secrets/update"))).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Save" }));
+    await waitFor(() =>
+      expect(calls.find((call) => call.path === "/api/secrets/update")?.body).toEqual({
+        path: "alpha",
+        key: "key",
+        value: "changed",
+        mount_point: "secret",
+      }),
+    );
+  });
+  it("refuses to save when nothing changed", async () => {
+    render(
+      <SecretPanel
+        path="alpha"
+        mount="secret"
+        copy={vi.fn()}
+        onChanged={vi.fn()}
+        onDeleted={vi.fn()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await screen.findByText("No changes to save.");
+  });
+  it("compares a historical version and restores it as a new version", async () => {
+    const original = handler;
+    handler = (url, options) =>
+      url.pathname === "/api/secrets/get" && url.searchParams.get("version") === "1"
+        ? { path: "alpha", data: { key: "old", gone: 1 }, metadata: { version: 1 } }
+        : original(url, options);
+    render(
+      <SecretPanel
+        path="alpha"
+        mount="secret"
+        copy={vi.fn()}
+        onChanged={vi.fn()}
+        onDeleted={vi.fn()}
+      />,
+    );
+    await screen.findByText("Secret Data");
+    fireEvent.click(screen.getByRole("combobox", { name: "Version" }));
+    fireEvent.click(screen.getByRole("option", { name: /^v1/ }));
+    const compare = await screen.findByRole("button", { name: "Compare with Latest" });
+    await waitFor(() => expect((compare as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(compare);
+    const diff = await screen.findByLabelText("Changes");
+    expect(within(diff).getByText("removed")).toBeTruthy();
+    expect(within(diff).getByText("changed")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restore This Version" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Restore v1" }));
+    await waitFor(() =>
+      expect(calls.find((call) => call.path === "/api/secrets/update-json")?.body).toEqual({
+        path: "alpha",
+        data: { key: "old", gone: 1 },
+        mount_point: "secret",
+      }),
+    );
+  });
+  it("compares key presence and values across environments", async () => {
+    const original = handler;
+    handler = (url, options) =>
+      url.pathname === "/api/secrets/compare"
+        ? {
+            current: "dev",
+            environments: [
+              { environment: "dev", status: "ok", keys: { a: "h1", b: "h2" } },
+              { environment: "sat", status: "ok", keys: { a: "h1", b: "h3" } },
+              { environment: "prod", status: "signed_out" },
+            ],
+          }
+        : original(url, options);
+    render(
+      <SecretPanel
+        path="alpha"
+        mount="secret"
+        canCompare
+        copy={vi.fn()}
+        onChanged={vi.fn()}
+        onDeleted={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Compare Environments" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const rows = await within(dialog).findAllByRole("row");
+    expect(rows[1].textContent).toBe("a✓✓");
+    expect(rows[2].textContent).toBe("bvalue Avalue B");
+    expect(rows[2].className).toBe("differs");
+    expect(within(dialog).getByText("Not signed in")).toBeTruthy();
+  });
   it("blocks invalid JSON root values", () => {
     expect(() => parseSecretJson("[]")).toThrow("JSON object");
     expect(() => parseSecretJson('{"value":1e999}')).toThrow("finite");
@@ -557,5 +673,39 @@ describe("migrated UI regressions", () => {
     await screen.findByRole("heading", { name: "Rollout failed — check pod details" });
     expect(screen.getByText("Progress deadline exceeded")).toBeTruthy();
     expect(screen.queryByText(/Restart complete/)).toBeNull();
+  });
+  it("shows pod logs and rolls back a failed rollout after confirmation", async () => {
+    const original = handler;
+    handler = (url, options) =>
+      url.pathname.endsWith("/status")
+        ? {
+            status: {
+              total: 1, ready: 0, updated: 1, available: 0, failed: true, complete: false,
+              message: "Progress deadline exceeded",
+              pods: [{ name: "app-pod", phase: "Running", ready: "0/1", is_ready: false }],
+            },
+          }
+        : url.pathname === "/api/k8s/pods/logs"
+          ? { logs: "[pod/app-pod/web] boom" }
+          : original(url, options);
+    render(<K8sModal environment="dev" onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /service.*default/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Restart" }));
+    await screen.findByRole("heading", { name: "Rollout failed — check pod details" });
+    fireEvent.click(screen.getByRole("button", { name: "Logs for app-pod" }));
+    await screen.findByText("[pod/app-pod/web] boom");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Previous container" }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.path.includes("pod=app-pod&previous=1"))).toBe(true),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Roll Back" }));
+    expect(calls.some((call) => call.path.endsWith("/rollback"))).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Roll Back" }));
+    await waitFor(() =>
+      expect(calls.find((call) => call.path.endsWith("/rollback"))?.body).toEqual({
+        namespace: "default",
+        name: "service",
+      }),
+    );
   });
 });

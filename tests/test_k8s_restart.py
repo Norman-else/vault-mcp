@@ -148,6 +148,29 @@ class TestStatusAPI(unittest.TestCase):
         self.assertEqual(state['pods_error'], 'Forbidden')
 
 
+class TestLogsAndRollbackAPI(unittest.TestCase):
+    def setUp(self):
+        server = SimpleNamespace(current_env='dev', environments={'dev': {'k8s_context': 'test'}})
+        self.client = VaultWebUI(server).app.test_client()
+
+    def test_logs_command(self):
+        done = SimpleNamespace(returncode=0, stdout='[pod/app/web] ready', stderr='')
+        with patch('vault_mcp.web_ui.subprocess.run', return_value=done) as run:
+            body = self.client.get('/api/k8s/pods/logs?namespace=default&pod=app-1&previous=1').json
+        self.assertEqual(body['logs'], '[pod/app/web] ready')
+        self.assertEqual(run.call_args[0][0][3:], ['logs', 'app-1', '-n', 'default', '--tail=200',
+                                                   '--all-containers', '--prefix', '--previous'])
+
+    def test_rollback_command_and_validation(self):
+        done = SimpleNamespace(returncode=0, stdout='deployment.apps/app rolled back', stderr='')
+        with patch('vault_mcp.web_ui.subprocess.run', return_value=done) as run:
+            self.client.post('/api/k8s/deployments/rollback', json={'namespace': 'default', 'name': 'app'})
+            self.assertEqual(run.call_args[0][0][3:], ['rollout', 'undo', 'deployment/app', '-n', 'default'])
+            bad = self.client.post('/api/k8s/deployments/rollback', json={'namespace': 'x;y', 'name': 'app'})
+            self.assertEqual(bad.status_code, 400)
+            self.assertEqual(run.call_count, 1)
+
+
 class TestK8sNameValidation(unittest.TestCase):
     def test_valid_names(self):
         for name in ['nginx', 'my-app-v2', 'a', 'app.web', 'kube-system']:

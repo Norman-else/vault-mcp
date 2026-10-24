@@ -180,6 +180,57 @@ function RolloutProgress({
   );
 }
 
+function PodLogs({ namespace, pod }: { namespace: string; pod: string }) {
+  const [previous, setPrevious] = useState(false);
+  const [logs, setLogs] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLogs(null);
+    setError("");
+    api<{ logs: string }>(
+      `/api/k8s/pods/logs?namespace=${encodeURIComponent(namespace)}&pod=${encodeURIComponent(pod)}${previous ? "&previous=1" : ""}`,
+      { signal: controller.signal },
+    )
+      .then((result) => {
+        if (!controller.signal.aborted) setLogs(result.logs);
+      })
+      .catch((error) => {
+        if (!isAborted(error)) setError(errorMessage(error));
+      });
+    return () => controller.abort();
+  }, [namespace, pod, previous, refresh]);
+  return (
+    <div className="pod-logs">
+      <div className="pod-logs-toolbar">
+        <span>Last 200 lines</span>
+        <label>
+          <input
+            type="checkbox"
+            checked={previous}
+            onChange={(event) => setPrevious(event.target.checked)}
+          />
+          Previous container
+        </label>
+        <button
+          className="text-button"
+          onClick={() => setRefresh((value) => value + 1)}
+        >
+          Refresh
+        </button>
+      </div>
+      {error ? (
+        <p className="error-banner">{error}</p>
+      ) : logs === null ? (
+        <Loading text="Loading logs…" />
+      ) : (
+        <pre>{logs || "No log output."}</pre>
+      )}
+    </div>
+  );
+}
+
 export function K8sModal({
   environment,
   onClose,
@@ -202,6 +253,8 @@ export function K8sModal({
   const [elapsed, setElapsed] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [history, setHistory] = useState<{ time: string; text: string }[]>([]);
+  const [logsFor, setLogsFor] = useState<string | null>(null);
+  const [confirmRollback, setConfirmRollback] = useState(false);
   const startedAt = useRef<number | null>(null);
   const previous = useRef<Rollout | null>(null);
   const request = useRef(new AbortController());
@@ -320,13 +373,14 @@ export function K8sModal({
     setSelected(item);
     setPhase("confirm");
   }
-  async function restart() {
+  async function run(action: "restart" | "rollback") {
     if (!selected || busy) return;
     setBusy(true);
     setError("");
+    setConfirmRollback(false);
     try {
       await post(
-        "/api/k8s/deployments/restart",
+        `/api/k8s/deployments/${action}`,
         { namespace: selected.namespace, name: selected.name },
         request.current.signal,
       );
@@ -339,10 +393,12 @@ export function K8sModal({
         setHistory([
           {
             time: new Date().toLocaleTimeString(),
-            text: "Restart accepted — waiting for cluster updates",
+            text: `${action === "restart" ? "Restart" : "Rollback"} accepted — waiting for cluster updates`,
           },
         ]);
         setPhase("progress");
+        // Polling stops on a failed rollout; restart it for the rollback.
+        if (action === "rollback") setRetry((value) => value + 1);
       }
     } catch (error) {
       if (!isAborted(error)) setError(errorMessage(error));
@@ -484,6 +540,19 @@ export function K8sModal({
                   </span>
                 )}
                 <span className="pod-status">{podLabel(pod)}</span>
+                <button
+                  className="text-button"
+                  aria-expanded={logsFor === pod.name}
+                  aria-label={`Logs for ${pod.name}`}
+                  onClick={() =>
+                    setLogsFor((name) => (name === pod.name ? null : pod.name))
+                  }
+                >
+                  Logs
+                </button>
+                {logsFor === pod.name && selected && (
+                  <PodLogs namespace={selected.namespace} pod={pod.name} />
+                )}
               </div>
             ))}
           </div>
@@ -524,15 +593,34 @@ export function K8sModal({
                 <button
                   className={`button ${environment.startsWith("prod") ? "danger-fill" : "primary"}`}
                   disabled={busy}
-                  onClick={() => void restart()}
+                  onClick={() => void run("restart")}
                 >
                   {busy ? "Restarting…" : "Confirm Restart"}
                 </button>
               </>
             ) : (
-              <button className="button" onClick={onClose}>
-                Close
-              </button>
+              <>
+                {status?.failed && (
+                  <button
+                    className={`button ${confirmRollback ? "danger-fill" : "danger"}`}
+                    disabled={busy}
+                    onClick={() =>
+                      confirmRollback
+                        ? void run("rollback")
+                        : setConfirmRollback(true)
+                    }
+                  >
+                    {busy
+                      ? "Rolling back…"
+                      : confirmRollback
+                        ? "Confirm Roll Back"
+                        : "Roll Back"}
+                  </button>
+                )}
+                <button className="button" onClick={onClose}>
+                  Close
+                </button>
+              </>
             )}
           </div>
         </>

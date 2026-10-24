@@ -79,3 +79,24 @@ export function formatTime(time?: string): string {
   const date = new Date(time || "");
   return Number.isNaN(date.getTime()) ? time || "—" : date.toLocaleString();
 }
+
+export type SecretChange = {
+  key: string;
+  kind: "added" | "removed" | "changed";
+  before?: JsonValue;
+  after?: JsonValue;
+};
+
+// ponytail: JSON.stringify equality, so reordered keys inside a nested object count as a change.
+export function diffSecret(before: SecretData, after: SecretData): SecretChange[] {
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+  return keys.flatMap((key): SecretChange[] => {
+    if (!Object.hasOwn(before, key))
+      return [{ key, kind: "added", after: after[key] }];
+    if (!Object.hasOwn(after, key))
+      return [{ key, kind: "removed", before: before[key] }];
+    return JSON.stringify(before[key]) === JSON.stringify(after[key])
+      ? []
+      : [{ key, kind: "changed", before: before[key], after: after[key] }];
+  });
+}
