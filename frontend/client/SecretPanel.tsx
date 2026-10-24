@@ -505,6 +505,15 @@ type EnvironmentSecret = {
   error?: string;
 };
 
+type CompareCell = "same" | "different" | "missing" | "only" | "absent";
+const compareLabel: Record<CompareCell, string> = {
+  same: "Same",
+  different: "Different",
+  missing: "Missing",
+  only: "Only here",
+  absent: "",
+};
+
 function CompareModal({
   path,
   mount,
@@ -533,11 +542,29 @@ function CompareModal({
       });
     return () => controller.abort();
   }, [path, mount]);
+  const [differencesOnly, setDifferencesOnly] = useState(true);
   const readable =
     result?.environments.filter((env) => env.status === "ok") ?? [];
+  // Everything is compared with the current environment (or the first readable one).
+  const base =
+    readable.find((env) => env.environment === result?.current) ?? readable[0];
+  const others = readable.filter((env) => env !== base);
+  const unavailable =
+    result?.environments.filter((env) => env.status !== "ok") ?? [];
   const keys = [
     ...new Set(readable.flatMap((env) => Object.keys(env.keys ?? {}))),
   ].sort();
+  const compare = (env: EnvironmentSecret, key: string): CompareCell => {
+    const own = env.keys?.[key];
+    const baseline = base?.keys?.[key];
+    if (!own) return baseline ? "missing" : "absent";
+    if (!baseline) return "only";
+    return own === baseline ? "same" : "different";
+  };
+  const differs = (key: string) =>
+    !base?.keys?.[key] || others.some((env) => compare(env, key) !== "same");
+  const rows = differencesOnly ? keys.filter(differs) : keys;
+  const name = (env: EnvironmentSecret) => env.environment.toUpperCase();
   const statusText = {
     missing: "No secret",
     signed_out: "Not signed in",
@@ -546,87 +573,134 @@ function CompareModal({
     ok: "",
   };
   return (
-    <Modal title="Compare Environments" onClose={onClose} wide>
-      <p className="modal-context">
-        <Icon name="lock" />
-        <code>
-          {mount}/{path}
-        </code>
-      </p>
-      {error && <ErrorBanner message={error} />}
-      {!result && !error && <Loading text="Reading environments…" />}
-      {result && (
-        <>
-          <div className="secret-table-wrap">
-            <table className="secret-table compare-table">
-              <thead>
-                <tr>
-                  <th>KEY</th>
-                  {result.environments.map((env) => (
-                    <th key={env.environment} title={env.error}>
-                      {env.environment.toUpperCase()}
-                      {env.environment === result.current && " · current"}
-                      {env.status !== "ok" && (
-                        <span className="compare-status">
-                          {statusText[env.status]}
+    <Modal title="Compare Environments" onClose={onClose} editor>
+      <div className="compare-body">
+        <p className="modal-context">
+          <Icon name="lock" />
+          <code>
+            {mount}/{path}
+          </code>
+        </p>
+        {error && <ErrorBanner message={error} />}
+        {!result && !error && <Loading text="Reading environments…" />}
+        {result && (
+          <>
+            {unavailable.length > 0 && (
+              <p className="compare-unavailable">
+                Not compared:{" "}
+                {unavailable.map((env) => (
+                  <span
+                    key={env.environment}
+                    className="badge"
+                    title={env.error}
+                  >
+                    {name(env)} · {statusText[env.status]}
+                  </span>
+                ))}
+              </p>
+            )}
+            {base && others.length === 0 && (
+              <p className="notice">
+                Only {name(base)} could be read — start or sign in to another
+                environment to compare.
+              </p>
+            )}
+            {base && others.length > 0 && (
+              <>
+                <div className="compare-summary">
+                  {others.map((env) => {
+                    const count = (kind: CompareCell) =>
+                      keys.filter((key) => compare(env, key) === kind).length;
+                    return (
+                      <div key={env.environment}>
+                        <strong>
+                          {name(env)} vs {name(base)}
+                        </strong>
+                        <span className="compare-pill different">
+                          {count("different")} different
                         </span>
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {keys.map((key) => {
-                  // Same letter = same value; values themselves never reach the browser.
-                  const groups = [
-                    ...new Set(
-                      readable
-                        .map((env) => env.keys?.[key])
-                        .filter((hash): hash is string => !!hash),
-                    ),
-                  ];
-                  const differs =
-                    groups.length > 1 ||
-                    readable.some((env) => !env.keys?.[key]);
-                  return (
-                    <tr key={key} className={differs ? "differs" : ""}>
-                      <td>
-                        <code className="key-name">{key}</code>
-                      </td>
-                      {result.environments.map((env) => {
-                        const hash = env.keys?.[key];
-                        return (
-                          <td key={env.environment} className="compare-cell">
-                            {env.status !== "ok" ? (
-                              ""
-                            ) : hash ? (
-                              groups.length > 1 ? (
-                                `value ${String.fromCharCode(65 + groups.indexOf(hash))}`
-                              ) : (
-                                "✓"
-                              )
+                        <span className="compare-pill missing">
+                          {count("missing")} missing in {name(env)}
+                        </span>
+                        <span className="compare-pill only">
+                          {count("only")} only in {name(env)}
+                        </span>
+                        <span className="compare-pill same">
+                          {count("same")} same
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <label className="compare-filter">
+                  <input
+                    type="checkbox"
+                    checked={differencesOnly}
+                    onChange={(event) =>
+                      setDifferencesOnly(event.target.checked)
+                    }
+                  />
+                  Differences only ({keys.filter(differs).length} of{" "}
+                  {keys.length} keys)
+                </label>
+                <div className="secret-table-wrap">
+                  <table className="secret-table compare-table">
+                    <thead>
+                      <tr>
+                        <th>KEY</th>
+                        <th>{name(base)} · baseline</th>
+                        {others.map((env) => (
+                          <th key={env.environment}>{name(env)}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((key) => (
+                        <tr key={key}>
+                          <td>
+                            <code className="key-name">{key}</code>
+                          </td>
+                          <td>
+                            {base.keys?.[key] ? (
+                              <span className="compare-cell">Present</span>
                             ) : (
-                              <span className="compare-missing">missing</span>
+                              <span className="compare-pill missing">
+                                Missing
+                              </span>
                             )}
                           </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {!keys.length && (
-            <p className="muted">No readable data to compare.</p>
-          )}
-          <p className="muted">
-            ✓ same everywhere · value A/B: environments with the same letter
-            share a value. Environments not signed in (or, in Infra Desktop, not
-            running) are skipped.
-          </p>
-        </>
-      )}
+                          {others.map((env) => {
+                            const cell = compare(env, key);
+                            return (
+                              <td key={env.environment}>
+                                {cell !== "absent" && (
+                                  <span className={`compare-pill ${cell}`}>
+                                    {compareLabel[cell]}
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {!rows.length && (
+                  <p className="muted">
+                    All {keys.length} keys match {name(base)}.
+                  </p>
+                )}
+                <p className="muted">
+                  Values are compared by fingerprint and never shown. Different
+                  values between environments are often expected (each
+                  environment has its own credentials).
+                </p>
+              </>
+            )}
+          </>
+        )}
+      </div>
       <div className="modal-actions">
         <button className="button" onClick={onClose}>
           Close

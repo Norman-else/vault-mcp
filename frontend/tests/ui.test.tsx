@@ -442,7 +442,7 @@ describe("migrated UI regressions", () => {
       }),
     );
   });
-  it("compares key presence and values across environments", async () => {
+  it("compares every environment with the current one", async () => {
     const original = handler;
     handler = (url, options) =>
       url.pathname === "/api/secrets/compare"
@@ -450,8 +450,8 @@ describe("migrated UI regressions", () => {
             current: "dev",
             environments: [
               { environment: "dev", status: "ok", keys: { a: "h1", b: "h2" } },
-              { environment: "sat", status: "ok", keys: { a: "h1", b: "h3" } },
-              { environment: "prod", status: "signed_out" },
+              { environment: "sat", status: "ok", keys: { a: "h1", b: "h3", c: "h4" } },
+              { environment: "prod", status: "not_running" },
             ],
           }
         : original(url, options);
@@ -469,11 +469,15 @@ describe("migrated UI regressions", () => {
       await screen.findByRole("button", { name: "Compare Environments" }),
     );
     const dialog = await screen.findByRole("dialog");
-    const rows = await within(dialog).findAllByRole("row");
-    expect(rows[1].textContent).toBe("a✓✓");
-    expect(rows[2].textContent).toBe("bvalue Avalue B");
-    expect(rows[2].className).toBe("differs");
-    expect(within(dialog).getByText("Not signed in")).toBeTruthy();
+    await within(dialog).findByText("PROD · Not running");
+    expect(within(dialog).getByText("1 different")).toBeTruthy();
+    expect(within(dialog).getByText("1 only in SAT")).toBeTruthy();
+    // identical keys are hidden until "Differences only" is cleared
+    let rows = within(dialog).getAllByRole("row").map((row) => row.textContent);
+    expect(rows).toEqual(["KEYDEV · baselineSAT", "bPresentDifferent", "cMissingOnly here"]);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Differences only/ }));
+    rows = within(dialog).getAllByRole("row").map((row) => row.textContent);
+    expect(rows[1]).toBe("aPresentSame");
   });
   it("offers environment compare only when the server can compare", async () => {
     render(
