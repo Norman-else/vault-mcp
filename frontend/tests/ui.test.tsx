@@ -475,6 +475,21 @@ describe("migrated UI regressions", () => {
     expect(rows[2].className).toBe("differs");
     expect(within(dialog).getByText("Not signed in")).toBeTruthy();
   });
+  it("offers environment compare only when the server can compare", async () => {
+    render(
+      <Workspace
+        environment={{ ...environment, locked: true, available_environments: ["dev"], can_compare: true }}
+        onSwitch={vi.fn()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "alpha" }));
+    await screen.findByRole("button", { name: "Compare Environments" });
+    cleanup();
+    render(<Workspace environment={environment} onSwitch={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "alpha" }));
+    await screen.findByText("Secret Data");
+    expect(screen.queryByRole("button", { name: "Compare Environments" })).toBeNull();
+  });
   it("blocks invalid JSON root values", () => {
     expect(() => parseSecretJson("[]")).toThrow("JSON object");
     expect(() => parseSecretJson('{"value":1e999}')).toThrow("finite");

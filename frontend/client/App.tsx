@@ -18,6 +18,7 @@ export interface Environment {
   available_environments: string[];
   /** Standalone mode (Infra Desktop): the server serves only this environment */
   locked?: boolean;
+  can_compare?: boolean;
 }
 type Mode = "kv" | "db";
 
@@ -407,10 +408,7 @@ export default function Workspace({
                 key={`kv:${mount}:${selected}`}
                 path={selected}
                 mount={mount}
-                canCompare={
-                  !environment.locked &&
-                  environment.available_environments.length > 1
-                }
+                canCompare={!!environment.can_compare}
                 copy={(value) => void copy(value)}
                 onChanged={() => {
                   setListRefresh((value) => value + 1);

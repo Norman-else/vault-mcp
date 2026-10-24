@@ -1,7 +1,13 @@
+import os
+import socket
+import threading
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from vault_mcp.web_ui import VaultWebUI
+from werkzeug.serving import make_server
+
+from vault_mcp.web_ui import VaultWebUI, parse_peers
 
 
 class InvalidPath(Exception):
@@ -49,6 +55,46 @@ class TestSecretCompare(unittest.TestCase):
         hvac_missing = SimpleNamespace(**{**server.__dict__, 'vault_client': client(error=InvalidPath())})
         body = VaultWebUI(hvac_missing).app.test_client().get('/api/secrets/compare?path=app').json
         self.assertEqual(body['environments'][0]['status'], 'missing')
+
+
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        return sock.getsockname()[1]
+
+
+class TestPeerCompare(unittest.TestCase):
+    def test_peers_are_loopback_only(self):
+        self.assertEqual(parse_peers('sat=http://127.0.0.1:9292/, prod=http://10.0.0.5:9293,bad'),
+                         {'sat': 'http://127.0.0.1:9292'})
+
+    def test_locked_ui_compares_with_running_peers(self):
+        def server(env, data):
+            return SimpleNamespace(current_env=env, environments={'dev': {}, 'sat': {}, 'prod': {}},
+                                   vault_client=client(data), env_clients={},
+                                   _ensure_authenticated=lambda: True)
+        peer = make_server('127.0.0.1', 0, VaultWebUI(server('sat', {'a': 'x', 'b': 2}), locked_env='sat').app)
+        threading.Thread(target=peer.serve_forever, daemon=True).start()
+        self.addCleanup(peer.shutdown)
+        peers = f'sat=http://127.0.0.1:{peer.server_port},prod=http://127.0.0.1:{free_port()}'
+        # an HTTP proxy in the environment must not be used for local peers
+        with patch.dict(os.environ, {'VAULT_MCP_PEERS': peers, 'HTTP_PROXY': 'http://127.0.0.1:1'}):
+            ui = VaultWebUI(server('dev', {'a': 'x'}), locked_env='dev').app.test_client()
+            self.assertTrue(ui.get('/api/environment').json['can_compare'])
+            body = ui.get('/api/secrets/compare?path=app').json
+        envs = {item['environment']: item for item in body['environments']}
+        self.assertEqual([item['environment'] for item in body['environments']], ['dev', 'sat', 'prod'])
+        self.assertEqual(envs['dev']['keys']['a'], envs['sat']['keys']['a'])
+        self.assertIn('b', envs['sat']['keys'])
+        self.assertEqual(envs['prod']['status'], 'not_running')
+
+    def test_locked_ui_without_peers_cannot_compare(self):
+        server = SimpleNamespace(current_env='dev', environments={'dev': {}, 'sat': {}},
+                                 _ensure_authenticated=lambda: True)
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('VAULT_MCP_PEERS', None)
+            body = VaultWebUI(server, locked_env='dev').app.test_client().get('/api/environment').json
+        self.assertFalse(body['can_compare'])
 
 
 if __name__ == '__main__':

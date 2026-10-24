@@ -500,7 +500,7 @@ function EditModal({
 
 type EnvironmentSecret = {
   environment: string;
-  status: "ok" | "missing" | "signed_out" | "error";
+  status: "ok" | "missing" | "signed_out" | "not_running" | "error";
   keys?: Record<string, string>;
   error?: string;
 };
@@ -541,6 +541,7 @@ function CompareModal({
   const statusText = {
     missing: "No secret",
     signed_out: "Not signed in",
+    not_running: "Not running",
     error: "Unreadable",
     ok: "",
   };
@@ -621,8 +622,8 @@ function CompareModal({
           )}
           <p className="muted">
             ✓ same everywhere · value A/B: environments with the same letter
-            share a value. Environments you have not signed in to this session
-            are skipped — switch to them once to include them.
+            share a value. Environments not signed in (or, in Infra Desktop, not
+            running) are skipped.
           </p>
         </>
       )}

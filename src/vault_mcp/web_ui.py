@@ -12,6 +12,9 @@ import socket
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import webbrowser
 from datetime import datetime
 from typing import Optional
@@ -27,6 +30,57 @@ logger = logging.getLogger(__name__)
 logging.getLogger('werkzeug').disabled = True
 
 # Valid Kubernetes resource/namespace name (DNS subdomain)
+def parse_peers(value: Optional[str]) -> dict:
+    """VAULT_MCP_PEERS ("sat=http://127.0.0.1:9292,prod=...") -> {env: base_url}, loopback only."""
+    peers = {}
+    for item in (value or '').split(','):
+        name, _, url = item.strip().partition('=')
+        host = urllib.parse.urlparse(url.strip()).hostname
+        if name and url and host in ('127.0.0.1', 'localhost', '::1'):
+            peers[name.strip()] = url.strip().rstrip('/')
+    return peers
+
+
+def secret_fingerprints(client, path: str, mount_point: str) -> dict:
+    """One environment's entry for cross-environment compare: key -> value hash, never values."""
+    if not client:
+        return {'status': 'signed_out'}
+    try:
+        secret = client.secrets.kv.v2.read_secret_version(path=path, mount_point=mount_point)
+        data = secret['data']['data'] or {}
+        return {'status': 'ok', 'keys': {
+            key: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()[:16]
+            for key, value in data.items()}}
+    except Exception as e:
+        # hvac raises InvalidPath; the curl transport raises with Vault's empty 404 body
+        if type(e).__name__ == 'InvalidPath' or str(e).replace(' ', '') == '{"errors":[]}':
+            return {'status': 'missing'}
+        return {'status': 'error', 'error': str(e)}
+
+
+# Peers are other local Web UIs; never route them through an HTTP proxy.
+_peer_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def peer_fingerprints(base_url: str, path: str, mount_point: str) -> dict:
+    query = urllib.parse.urlencode({'path': path, 'mount_point': mount_point})
+    try:
+        with _peer_opener.open(f'{base_url}/api/secrets/fingerprints?{query}', timeout=10) as response:
+            body = json.loads(response.read())
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.loads(e.read())
+        except Exception:
+            body = {}
+        if e.code == 401:
+            return {'status': 'signed_out'}
+        return {'status': 'error', 'error': body.get('error') or f'HTTP {e.code}'}
+    except (urllib.error.URLError, OSError):
+        return {'status': 'not_running'}
+    entry = {k: body[k] for k in ('status', 'keys', 'error') if k in body}
+    return entry if entry.get('status') else {'status': 'error', 'error': 'Invalid peer response'}
+
+
 K8S_NAME_RE = re.compile(r'^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$')
 
 
@@ -114,6 +168,8 @@ class VaultWebUI:
             locked_env: serve only this environment (standalone mode used by Infra Desktop)
         """
         self.locked_env = locked_env
+        # Other environments' Web UIs (Infra Desktop runs one per environment), for cross-env compare.
+        self.peers = parse_peers(os.getenv('VAULT_MCP_PEERS'))
         self.vault_server = vault_server
         # Get the directory where this file is located
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -639,12 +695,24 @@ class VaultWebUI:
                     'error': str(e)
                 }), 500
 
+        @self.app.route('/api/secrets/fingerprints', methods=['GET'])
+        def secret_fingerprints_route():
+            """This environment's key fingerprints, for a peer Web UI's compare."""
+            path = request.args.get('path')
+            if not path:
+                return jsonify({'success': False, 'error': 'Path is required'}), 400
+            if not self.vault_server._ensure_authenticated():
+                return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            return jsonify({'success': True, **secret_fingerprints(
+                self.vault_server.vault_client, path, request.args.get('mount_point', 'secret'))})
+
         @self.app.route('/api/secrets/compare', methods=['GET'])
         def compare_secret_across_environments():
             """Key presence and value fingerprints for one path in every environment.
 
-            Only environments signed in during this session are read (signing in to
-            another one switches the kubectl context). Values never leave the server.
+            Reads environments signed in during this session (signing in to another one
+            switches the kubectl context) and asks peer Web UIs (VAULT_MCP_PEERS) for the
+            rest. Values never leave the server.
             """
             path = request.args.get('path')
             mount_point = request.args.get('mount_point', 'secret')
@@ -652,28 +720,20 @@ class VaultWebUI:
                 return jsonify({'success': False, 'error': 'Path is required'}), 400
             if not self.vault_server._ensure_authenticated():
                 return jsonify({'success': False, 'error': 'Not authenticated'}), 401
-            current = self.vault_server.current_env
-            names = [self.locked_env] if self.locked_env else list(self.vault_server.environments.keys())
+            current = self.locked_env or self.vault_server.current_env
+            known = list(self.vault_server.environments.keys())
+            names = [current] if self.locked_env else known
+            names += [env for env in self.peers if env not in names]
+            names.sort(key=lambda env: known.index(env) if env in known else len(known))
             clients = dict(getattr(self.vault_server, 'env_clients', {}) or {})
             clients[current] = self.vault_server.vault_client
             results = []
             for env in names:
-                client = clients.get(env)
-                if not client:
-                    results.append({'environment': env, 'status': 'signed_out'})
-                    continue
-                try:
-                    secret = client.secrets.kv.v2.read_secret_version(
-                        path=path, mount_point=mount_point)
-                    data = secret['data']['data'] or {}
-                    results.append({'environment': env, 'status': 'ok', 'keys': {
-                        key: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()[:16]
-                        for key, value in data.items()}})
-                except Exception as e:
-                    # hvac raises InvalidPath; the curl transport raises with Vault's empty 404 body
-                    missing = type(e).__name__ == 'InvalidPath' or str(e).replace(' ', '') == '{"errors":[]}'
-                    results.append({'environment': env, 'status': 'missing' if missing else 'error',
-                                    **({} if missing else {'error': str(e)})})
+                if env in self.peers and (self.locked_env or env not in clients):
+                    entry = peer_fingerprints(self.peers[env], path, mount_point)
+                else:
+                    entry = secret_fingerprints(clients.get(env), path, mount_point)
+                results.append({'environment': env, **entry})
             return jsonify({'success': True, 'current': current, 'environments': results})
 
         @self.app.route('/api/secrets/search', methods=['GET'])
@@ -1141,6 +1201,8 @@ class VaultWebUI:
                 'authenticated': self.vault_server._ensure_authenticated(),
                 'available_environments': [self.locked_env] if self.locked_env else list(self.vault_server.environments.keys()),
                 'locked': bool(self.locked_env),
+                'can_compare': bool(self.peers) or (
+                    not self.locked_env and len(self.vault_server.environments) > 1),
             })
 
         @self.app.route('/api/health', methods=['GET'])

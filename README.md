@@ -282,6 +282,7 @@ PYTHONPATH=src VAULT_MCP_AWS_CREDENTIALS=ambient .venv/Scripts/python.exe -m vau
 - Vault token 剩余不到 5 分钟时自动重新登录；`POST /api/login` 也会用当前凭证重新登录（调用方续期 AWS 凭证后调用）。
 - 启动后在 stdout 打印 `VAULT_WEB_UI_READY http://127.0.0.1:<port>`；端口被占用时以退出码 2 结束。
 - `GET /api/health` 返回 `vault`（`authenticated` / `unauthenticated` / `error`）、`environment` 和可选的 `token_ttl`（秒），不含任何 token 或 secret。
+- `VAULT_MCP_PEERS=sat=http://127.0.0.1:9292,prod=http://127.0.0.1:9293`（可选）：其他环境的独立 Web UI 地址，只接受本机地址。设置后页面上的 **Compare Environments** 会向这些进程要 key 的指纹（`GET /api/secrets/fingerprints`，只有 sha256，不含值）来做跨环境对比；没启动的环境显示 "Not running"。
 - `--version` 输出 `vault-mcp-web-ui standalone 1`，供 Infra Desktop 检测是否支持该模式。
 - 独立模式下不会因空闲自动关闭，进程生命周期由调用方负责。MCP 模式（未设置该环境变量）行为不变。
 
