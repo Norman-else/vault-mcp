@@ -210,10 +210,10 @@ export function Modal({
           'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
         ) || [],
       );
+    // Without an autofocus field, focus the dialog itself: focusing the first button
+    // (the close button) would open its tooltip as soon as the dialog appears.
     (
-      element?.querySelector<HTMLElement>("[data-autofocus]") ||
-      focusables()[0] ||
-      element
+      element?.querySelector<HTMLElement>("[data-autofocus]") || element
     )?.focus();
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !busyRef.current) {

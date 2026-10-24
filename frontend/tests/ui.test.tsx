@@ -504,6 +504,20 @@ describe("migrated UI regressions", () => {
     await screen.findByText("Secret Data");
     expect(screen.queryByRole("button", { name: "Compare Environments" })).toBeNull();
   });
+  it("does not open the close tooltip when a dialog without a field opens", async () => {
+    const original = handler;
+    handler = (url, options) =>
+      url.pathname === "/api/secrets/compare"
+        ? { current: "dev", environments: [{ environment: "dev", status: "ok", keys: {}, values: {} }] }
+        : original(url, options);
+    render(
+      <SecretPanel path="alpha" mount="secret" canCompare copy={vi.fn()} onChanged={vi.fn()} onDeleted={vi.fn()} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Compare Environments" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(document.activeElement).toBe(dialog);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
   it("blocks invalid JSON root values", () => {
     expect(() => parseSecretJson("[]")).toThrow("JSON object");
     expect(() => parseSecretJson('{"value":1e999}')).toThrow("finite");

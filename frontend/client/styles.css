@@ -2973,7 +2973,11 @@ progress {
   .diff-values { grid-column: 1 / -1; }
   .notice-actions { display: flex; margin: 8px 0 0; }
 }
-.compare-body { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 14px; }
+/* The table scrolls on its own so its header can stay pinned. */
+.compare-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+.compare-body > * { flex-shrink: 0; }
+.compare-body > .secret-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border-top: 1px solid var(--border); }
+.compare-table th { position: sticky; top: 0; z-index: 1; background: var(--card); box-shadow: inset 0 -1px var(--border); }
 .compare-unavailable { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .compare-summary { display: grid; gap: 8px; }
 .compare-summary > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
