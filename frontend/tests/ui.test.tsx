@@ -138,8 +138,8 @@ describe("migrated UI regressions", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Confirm Restart" }));
     await screen.findByRole("heading", { name: "Waiting for new pods to become ready…" });
     expect(screen.queryByRole("progressbar")).toBeNull();
-    expect(screen.getByText("NEW · replacement")).toBeTruthy();
-    expect(screen.getByText("OLD · being replaced")).toBeTruthy();
+    expect(screen.getByText("NEW")).toBeTruthy();
+    expect(screen.getByText("OLD")).toBeTruthy();
     expect(screen.getByText("New pods ready").textContent).toContain("0 / 2");
     expect(screen.getByText("Running · not ready")).toBeTruthy();
     expect(rolloutHeading({ ...status, observed: false })).toContain("controller");

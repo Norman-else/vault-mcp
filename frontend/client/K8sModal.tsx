@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage, isAborted, post } from "./api";
 import { ErrorBanner, Icon, Loading, Modal } from "./components";
-import { formatTime } from "./utils";
 interface Deployment {
   namespace: string;
   name: string;
@@ -48,6 +47,137 @@ export function rolloutHeading(status: Rollout | null): string {
   if (status.pods.some((pod) => pod.is_new === false))
     return "Waiting for old pods to terminate…";
   return "Waiting for new replicas to become available…";
+}
+
+type Pod = Rollout["pods"][number];
+type Step = "done" | "active" | "pending" | "failed";
+
+function podLabel(pod: Pod): string {
+  if (pod.phase !== "Running") return pod.phase;
+  if (pod.is_ready === true) return "Ready";
+  if (pod.is_ready === false || pod.ready.startsWith("0/"))
+    return "Running · not ready";
+  return "Running";
+}
+function podTone(pod: Pod): string {
+  if (pod.phase === "Running" && pod.is_ready !== false) return "ok";
+  if (pod.phase === "Failed" || pod.detail) return "bad";
+  return "wait";
+}
+
+function RolloutProgress({
+  status,
+  error,
+  elapsed,
+  lastUpdated,
+}: {
+  status: Rollout | null;
+  error: string;
+  elapsed: number;
+  lastUpdated: number | null;
+}) {
+  const tone = error
+    ? "paused"
+    : status?.failed
+      ? "failed"
+      : status?.complete
+        ? "complete"
+        : "running";
+  const label = {
+    paused: "PAUSED",
+    failed: "FAILED",
+    complete: "DONE",
+    running: "IN PROGRESS",
+  }[tone];
+  const total = status?.total ?? 0;
+  const created = status && status.observed !== false ? status.updated : null;
+  const newReady = status?.new_ready ?? null;
+  const old =
+    !status || status.pods_error || newReady == null
+      ? null
+      : status.pods.filter((pod) => pod.is_new === false).length;
+  // ponytail: each step is done once its count hits the target; the first unfinished step is the active one.
+  const reached = status?.complete
+    ? [true, true, true]
+    : [
+        created != null && created >= total,
+        newReady != null && newReady >= total,
+        old === 0,
+      ];
+  const current = reached.indexOf(false);
+  const steps: { text: string; count: string }[] = [
+    {
+      text: "Replacement pods created",
+      count: `${created ?? "—"} / ${total}`,
+    },
+    { text: "New pods ready", count: `${newReady ?? "—"} / ${total}` },
+    { text: "Old pods removed", count: old == null ? "—" : `${old} left` },
+  ];
+  return (
+    <div role="status" className={`rollout-summary ${tone}`}>
+      <div className="rollout-banner">
+        <span className="rollout-icon" aria-hidden>
+          {tone === "complete" ? (
+            "✓"
+          ) : tone === "running" ? (
+            <span className="spinner" />
+          ) : (
+            "!"
+          )}
+        </span>
+        <div>
+          <span className="rollout-state">{label}</span>
+          <h3>
+            {error
+              ? "Live updates paused — retry status"
+              : rolloutHeading(status)}
+          </h3>
+        </div>
+        <span className="rollout-time">
+          {elapsed}s
+          {lastUpdated && (
+            <small>{new Date(lastUpdated).toLocaleTimeString()}</small>
+          )}
+        </span>
+      </div>
+      {status?.failed && status.message && (
+        <p className="error-banner">{status.message}</p>
+      )}
+      {status?.pods_error && (
+        <p className="error-banner">
+          Pod details unavailable: {status.pods_error}
+        </p>
+      )}
+      {status && (
+        <ol className="rollout-steps">
+          {steps.map((step, i) => {
+            const state: Step = reached[i]
+              ? "done"
+              : i === current
+                ? status.failed
+                  ? "failed"
+                  : "active"
+                : "pending";
+            return (
+              <li key={step.text} className={state}>
+                <span className="step-mark" aria-hidden>
+                  {state === "done" ? "✓" : state === "failed" ? "✕" : i + 1}
+                </span>
+                <span>
+                  {step.text} <strong>{step.count}</strong>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {elapsed >= 300 && !status?.complete && !status?.failed && (
+        <p className="muted">
+          Taking longer than five minutes — check pods below.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function K8sModal({
@@ -330,118 +460,39 @@ export function K8sModal({
               Perform a rolling restart of this deployment?
             </p>
           ) : (
-            <div role="status" className="rollout-summary">
-              <h3>
-                {error
-                  ? "Live updates paused — retry status"
-                  : rolloutHeading(status)}
-              </h3>
-              <p>
-                {elapsed}s elapsed ·{" "}
-                {error
-                  ? "Data may be out of date"
-                  : status?.complete || status?.failed
-                    ? "Monitoring finished"
-                    : "Auto-refreshing"}
-                {lastUpdated &&
-                  ` · Last received ${new Date(lastUpdated).toLocaleTimeString()}`}
-              </p>
-              {status && (
-                <div className="rollout-counts">
-                  <span>
-                    New replicas created{" "}
-                    <strong>
-                      {status.observed === false ? "—" : status.updated} /{" "}
-                      {status.total}
-                    </strong>
-                  </span>
-                  <span>
-                    New pods ready{" "}
-                    <strong>
-                      {status.new_ready ?? "—"} / {status.total}
-                    </strong>
-                  </span>
-                  <span>
-                    Old pods remaining{" "}
-                    <strong>
-                      {status.pods_error || status.new_ready == null
-                        ? "—"
-                        : status.pods.filter((pod) => pod.is_new === false)
-                            .length}
-                    </strong>
-                  </span>
-                </div>
-              )}
-              <p>
-                Old pods may stay available while replacements start. Running
-                does not mean ready.
-              </p>
-              {status?.pods_error && (
-                <p className="error-banner">
-                  Pod details unavailable: {status.pods_error}
-                </p>
-              )}
-              {elapsed >= 300 && !status?.complete && !status?.failed && (
-                <p>
-                  Taking longer than five minutes. Monitoring continues; check
-                  pod details below.
-                </p>
-              )}
-              {status?.message && (
-                <details>
-                  <summary>Deployment details</summary>
-                  <p>{status.message}</p>
-                </details>
-              )}
-            </div>
+            <RolloutProgress
+              status={status}
+              error={error}
+              elapsed={elapsed}
+              lastUpdated={lastUpdated}
+            />
           )}
           {!status && !error && <Loading text="Loading pod status…" />}
           <div className="pod-list">
             {status?.pods.map((pod) => (
               <div className="pod-row" key={pod.name}>
+                <span className={`pod-dot ${podTone(pod)}`} aria-hidden />
                 <div className="pod-identity">
                   <code>{pod.name}</code>
-                  {phase === "progress" && (
-                    <span className="pod-generation">
-                      {pod.is_new === true
-                        ? "NEW · replacement"
-                        : pod.is_new === false
-                          ? "OLD · being replaced"
-                          : "Generation unknown"}
-                    </span>
-                  )}
                   {pod.detail && (
                     <span className="pod-detail">{pod.detail}</span>
                   )}
-                  {pod.created && (
-                    <span className="pod-created">
-                      Created {formatTime(pod.created)}
-                    </span>
-                  )}
                 </div>
-                <div className="pod-status">
-                  <span className="badge">
-                    {pod.phase === "Running"
-                      ? pod.is_ready === true
-                        ? "Ready"
-                        : pod.is_ready === false || pod.ready.startsWith("0/")
-                          ? "Running · not ready"
-                          : "Running"
-                      : pod.phase}
+                {phase === "progress" && pod.is_new != null && (
+                  <span className={`pod-generation ${pod.is_new ? "new" : ""}`}>
+                    {pod.is_new ? "NEW" : "OLD"}
                   </span>
-                  <span>{pod.ready} ready</span>
-                </div>
+                )}
+                <span className="pod-status">{podLabel(pod)}</span>
               </div>
             ))}
           </div>
           {phase === "progress" && (
-            <details className="rollout-history" open>
-              <summary>
-                Recent changes{" "}
-                <span className="muted">
-                  · observed while this window is open
-                </span>
-              </summary>
+            <details className="rollout-history">
+              <summary>Details &amp; recent changes</summary>
+              {status?.message && !status.failed && (
+                <p className="rollout-message">{status.message}</p>
+              )}
               <ol>
                 {history.map((item, i) => (
                   <li key={`${item.time}-${i}`}>
